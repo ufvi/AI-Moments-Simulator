@@ -54,6 +54,27 @@
             color: var(--danger);
         }
 
+        .color-examples {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+
+        .color-sample {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: 0.2s;
+        }
+
+        .color-sample:hover {
+            border-color: var(--text);
+            transform: scale(1.15);
+        }
+
         .dark-mode {
             --bg: #1a1a2e;
             --card-bg: #23233b;
@@ -840,9 +861,9 @@
             color: var(--accent);
         }
 
-        .ai-comment-badge {
+        .user-badge {
             display: inline-block;
-            background: var(--ai-purple);
+            background: #888;
             color: #fff;
             font-size: 10px;
             padding: 1px 6px;
@@ -1153,6 +1174,36 @@
             color: inherit;
             user-select: text;
         }
+
+        /* 备份二级菜单 */
+        .backup-dropdown {
+            position: absolute;
+            right: 10px;
+            top: 46px;
+            background: var(--dropdown-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            z-index: 200;
+            min-width: 120px;
+            white-space: nowrap;
+        }
+
+        .backup-dropdown-item {
+            padding: 10px 16px;
+            font-size: 13px;
+            color: var(--text);
+            cursor: pointer;
+            transition: background var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .backup-dropdown-item:hover {
+            background: var(--btn-hover-bg);
+        }
     </style>
 </head>
 
@@ -1168,8 +1219,11 @@
                 <button class="btn-icon" id="btnToggleTheme" title="深色模式">🌙</button>
                 <button class="btn-icon" id="btnToggleSearch" title="搜索">🔍</button>
                 <button class="btn-icon" id="btnAISettings" title="AI 设置">🤖</button>
-                <button class="btn-icon" id="btnExport" title="导出 ZIP">💾</button>
-                <button class="btn-icon" id="btnImport" title="导入">📂</button>
+                <button class="btn-icon" id="btnBackupMenu" title="备份/恢复">💾</button>
+                <div class="backup-dropdown" id="backupDropdown" style="display:none;">
+                    <div class="backup-dropdown-item" data-action="export">📤 导出备份</div>
+                    <div class="backup-dropdown-item" data-action="import">📥 导入恢复</div>
+                </div>
                 <button class="btn-icon" id="btnRefresh" title="刷新">🔄</button>
             </div>
             <div class="search-bar" id="searchBar" style="display:none;">
@@ -1251,32 +1305,6 @@
     </div>
 
     <script>
-        // 懒加载观察器：当带有 data-media-id 的元素进入视口时，加载并显示媒体
-        const lazyMediaObserver = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (!entry.isIntersecting) return;
-                const el = entry.target;
-                const mid = el.dataset.mediaId;
-                if (!mid) return;
-
-                // 加载媒体
-                loadMediaUrl(mid).then(url => {
-                    if (!url) return;
-                    if (el.tagName === 'IMG') {
-                        el.src = url;
-                        el.style.display = 'block';
-                    } else if (el.tagName === 'VIDEO') {
-                        el.src = url;
-                        el.load();
-                    }
-                }).catch(() => { });
-
-                // 加载后取消观察，避免重复加载
-                lazyMediaObserver.unobserve(el);
-            });
-        }, {
-            rootMargin: '100px'  // 提前 100px 加载，让体验更流畅
-        });
         (function () {
             // IndexedDB 数据库（含 backup、media 和新增的 appData 仓库）
             // 在外部声明一个变量，用来缓存 Promise
@@ -1391,6 +1419,40 @@
                 mediaCache.clear();
             }
 
+            // 懒加载观察器：定义在 IIFE 内部，这样才能访问到 loadMediaUrl
+            const lazyMediaObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    const el = entry.target;
+                    const mid = el.dataset.mediaId;
+                    if (!mid) return;
+
+                    // 加载媒体
+                    loadMediaUrl(mid).then(url => {
+                        if (!url) return;
+                        if (el.tagName === 'IMG') {
+                            el.src = url;
+                            el.style.display = 'block';
+                        } else if (el.tagName === 'VIDEO') {
+                            el.src = url;
+                            el.load();
+                        } else if (el.tagName === 'DIV') {
+                            // 图片 wrapper div —— 找到内部的 img 并赋值
+                            const img = el.querySelector('img[data-media-id]');
+                            if (img) {
+                                img.src = url;
+                                img.style.display = 'block';
+                            }
+                        }
+                    }).catch(() => { });
+
+                    // 加载后取消观察，避免重复加载
+                    lazyMediaObserver.unobserve(el);
+                });
+            }, {
+                rootMargin: '100px'
+            });
+
             // 自动备份
             async function autoBackup() {
                 try {
@@ -1451,15 +1513,26 @@
             function savePosts() { saveAppData(KEY_POSTS, posts); }
             function saveAIConfig() { setJSON(KEY_AI, aiConfig); }
 
-            const AI_ID = 'acc_ai';
+            const KEY_ACTIVE_AI = 'moments_active_ai';
+            let activeAIId = localStorage.getItem(KEY_ACTIVE_AI);
 
             function ensureAIAccount() {
-                if (!accounts.find(a => a.id === AI_ID)) {
+                // 兼容旧版单一 AI 账号（id='acc_ai'），保留并打上 isAI 标记
+                accounts.filter(a => a.id === 'acc_ai').forEach(a => { a.isAI = true; });
+                // 确保至少存在一个 AI 人设
+                if (!accounts.find(a => a.isAI)) {
                     accounts.push({
-                        id: AI_ID, nickname: 'AI助手', avatar: '', avatarBg: '#6c5ce7', isAI: true,
-                        createdAt: Date.now()
+                        id: 'acc_ai_' + Date.now(), nickname: 'AI助手', avatar: '',
+                        avatarBg: '#6c5ce7', isAI: true,
+                        systemPrompt: '你是一个友善的朋友，请用简短的口语为朋友圈生成评论。',
+                        style: '', createdAt: Date.now()
                     });
                     saveAccounts();
+                }
+                // 确保 activeAIId 指向合法的 AI 账号
+                if (!activeAIId || !accounts.find(a => a.id === activeAIId && a.isAI)) {
+                    activeAIId = accounts.find(a => a.isAI)?.id || null;
+                    if (activeAIId) localStorage.setItem(KEY_ACTIVE_AI, activeAIId);
                 }
             }
 
@@ -1530,12 +1603,27 @@
 
             function renderDropdown() {
                 const normal = accounts.filter(a => !a.isAI);
-                const aiAcc = accounts.find(a => a.isAI);
+                const aiAccounts = accounts.filter(a => a.isAI);
                 let html = '';
-                if (aiAcc) {
-                    html +=
-                        `<div class="account-dropdown-item" id="aiAccountItem" style="cursor:pointer; background:var(--btn-bg);"><span>🤖</span><span>${escapeHtml(aiAcc.nickname)}</span><span class="ai-label">虚拟评论员</span><span class="account-dropdown-edit" data-action="edit-ai">✎</span></div>`;
-                }
+
+                // ── AI 人设区 ──
+                html += `<div style="padding:6px 14px 4px;font-size:11px;color:var(--text-light);font-weight:600;letter-spacing:.5px;">🤖 AI 虚拟评论员</div>`;
+                html += aiAccounts.map(a => {
+                    const isActive = a.id === activeAIId;
+                    return `<div class="account-dropdown-item${isActive ? ' active' : ''}" data-ai-id="${a.id}" style="${isActive ? 'background:#f0eeff;' : 'background:var(--btn-bg);'}">
+                        <div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:13px;flex-shrink:0;">🤖</div>
+                        <span>${escapeHtml(a.nickname)}</span>
+                        ${isActive ? '<span class="check-mark" style="color:var(--ai-purple);">✓</span>' : ''}
+                        <span class="account-dropdown-edit" data-action="edit-ai" data-account-id="${a.id}">✎</span>
+                    </div>`;
+                }).join('');
+                html += `<div class="account-dropdown-add" id="btnAddAIAccount" style="color:var(--ai-purple);">+ 添加 AI 人设</div>`;
+
+                // ── 分隔线 ──
+                html += `<div style="border-top:1px solid var(--border);margin:2px 0;"></div>`;
+
+                // ── 普通账号区 ──
+                html += `<div style="padding:6px 14px 4px;font-size:11px;color:var(--text-light);font-weight:600;letter-spacing:.5px;">👤 普通账号</div>`;
                 html += normal.map(a => {
                     const isActive = a.id === currentId;
                     let avHtml = a.avatar?.startsWith('data:') ?
@@ -1544,9 +1632,25 @@
                     return `<div class="account-dropdown-item${isActive ? ' active' : ''}" data-account-id="${a.id}">${avHtml}<span>${escapeHtml(a.nickname)}</span>${isActive ? '<span class="check-mark">✓</span>' : ''}<span class="account-dropdown-edit" data-action="edit" data-account-id="${a.id}">✎</span></div>`;
                 }).join('');
                 html += '<div class="account-dropdown-add" id="btnAddAccount">+ 添加新账号</div>';
+
                 $dropdown.innerHTML = html;
-                const aiItem = document.getElementById('aiAccountItem');
-                if (aiItem) aiItem.onclick = () => editAccount(AI_ID);
+
+                // AI 人设点击切换
+                $dropdown.querySelectorAll('[data-ai-id]').forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (e.target.dataset.action === 'edit-ai') { editAccount(e.target.dataset.accountId); return; }
+                        activeAIId = item.dataset.aiId;
+                        localStorage.setItem(KEY_ACTIVE_AI, activeAIId);
+                        $dropdown.style.display = 'none';
+                        showToast('🤖 已切换：' + (getAcc(activeAIId)?.nickname || 'AI'));
+                        renderDropdown();
+                    });
+                });
+                document.getElementById('btnAddAIAccount')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    addAIAccount();
+                });
             }
 
             function renderTimeline(reset = true) {
@@ -1578,6 +1682,7 @@
             }
 
             function renderCard(post) {
+                let cmtsHtml = '';
                 const author = getAcc(post.userId) || { nickname: '未知用户', avatar: '', avatarBg: '#ccc' };
                 const isLiked = post.likes.includes(currentId);
                 const likeCnt = post.likes.length;
@@ -1586,29 +1691,38 @@
                     `<img class="post-avatar" src="${author.avatar}">` :
                     `<div class="post-avatar-placeholder" style="background:${author.avatarBg}">${author.nickname.charAt(0).toUpperCase()}</div>`;
 
+                // === 构建媒体区域 ===
                 let mediaHtml = '';
                 const allImages = post.images || [];
                 if (allImages.length) {
-                    const gridClass = allImages.length === 1 ? 'single-col' : (allImages.length === 2 || allImages.length === 4 ? 'double-col' : '');
-                    mediaHtml += `<div class="post-images-grid ${gridClass}">`;
-                    const display = allImages.length > 9 ? allImages.slice(0, 8) : allImages.slice(0, 9);
-                    display.forEach((mid, i) => mediaHtml +=
-                        `<div class="post-image-wrapper" data-image-index="${i}" data-post-id="${post.id}" data-media-id="${mid}"><img data-media-id="${mid}" style="display:none;"></div>`
-                    );
-                    if (allImages.length > 9) mediaHtml +=
-                        `<div class="post-image-wrapper" data-image-index="8" data-post-id="${post.id}" data-media-id="${allImages[8]}"><img src="" data-media-id="${allImages[8]}" style="display:none;"><div class="image-overlay">+${allImages.length - 8}</div></div>`;
+                    mediaHtml += '<div class="post-images-grid' +
+                        (allImages.length === 1 ? ' single-col' : allImages.length === 2 ? ' double-col' : '') +
+                        '">';
+                    allImages.forEach((mid, i) => {
+                        mediaHtml += `<div class="post-image-wrapper" data-media-id="${mid}" data-post-id="${post.id}" data-image-index="${i}">
+                <img data-media-id="${mid}" style="display:none;">
+            </div>`;
+                    });
                     mediaHtml += '</div>';
                 }
                 (post.videos || []).forEach(mid => mediaHtml +=
                     `<div class="post-video-wrapper"><video controls data-media-id="${mid}"></video></div>`);
 
-                let cmtsHtml = '';
+                // === 构建评论区（只构建一次） ===
                 if (post.comments.length) {
                     cmtsHtml = '<div class="post-comments">';
                     post.comments.slice(-10).forEach(c => {
                         const cu = getAcc(c.userId) || { nickname: '未知' };
-                        const isAI = c.userId === AI_ID;
-                        cmtsHtml += `<div class="comment-item"><div class="comment-content"><span class="comment-user">${escapeHtml(cu.nickname)}${isAI ? '<span class="ai-comment-badge">虚拟评论员</span>' : ''}：</span><span class="${isAI ? 'ai-comment-text' : ''}">${parseMarkdown(c.text)}</span><span class="comment-time">${formatTime(c.timestamp)}</span></div><button class="reply-btn" data-action="reply-comment" data-post-id="${post.id}" data-username="${escapeHtml(cu.nickname)}">回复</button><button class="delete-comment-btn" data-action="delete-comment" data-post-id="${post.id}" data-comment-id="${c.id}" title="删除评论">✕</button></div>`;
+                        const isAI = cu?.isAI;
+                        cmtsHtml += `<div class="comment-item">
+                <div class="comment-content">
+                    <span class="comment-user">${escapeHtml(cu.nickname)}${getBadgeHtml(cu)}：</span>
+                    <span class="${isAI ? 'ai-comment-text' : ''}">${parseMarkdown(c.text)}</span>
+                    <span class="comment-time">${formatTime(c.timestamp)}</span>
+                </div>
+                <button class="reply-btn" data-action="reply-comment" data-post-id="${post.id}" data-username="${escapeHtml(cu.nickname)}">回复</button>
+                <button class="delete-comment-btn" data-action="delete-comment" data-post-id="${post.id}" data-comment-id="${c.id}" title="删除评论">✕</button>
+            </div>`;
                     });
                     cmtsHtml += '</div>';
                 }
@@ -1628,12 +1742,18 @@
             }
 
             function observeMediaInContainer(container) {
-                const mediaElements = container.querySelectorAll('img[data-media-id], video[data-media-id]');
-                mediaElements.forEach(el => {
-                    // 用原始属性值判断：如果有 src 属性且非空，说明已经加载过，否则未加载
-                    const srcAttr = el.getAttribute('src');
-                    if (srcAttr && srcAttr !== '') return;
-                    lazyMediaObserver.observe(el);
+                // 观察图片 wrapper div（可见元素）而非内部隐藏的 img
+                // display:none 的元素没有布局盒子，IntersectionObserver 永远不会触发
+                container.querySelectorAll('.post-image-wrapper[data-media-id]').forEach(wrapper => {
+                    const img = wrapper.querySelector('img[data-media-id]');
+                    if (!img) return;
+                    if (img.getAttribute('src')) return; // 已加载，跳过
+                    lazyMediaObserver.observe(wrapper);
+                });
+                // 视频直接观察（video 元素可见，有布局盒子）
+                container.querySelectorAll('video[data-media-id]').forEach(video => {
+                    if (video.getAttribute('src')) return;
+                    lazyMediaObserver.observe(video);
                 });
             }
 
@@ -1780,7 +1900,6 @@
                 if (!commentsDiv) {
                     commentsDiv = document.createElement('div');
                     commentsDiv.className = 'post-comments';
-                    // 插入到评论区输入行之前
                     const commentInputRow = card.querySelector('.comment-input-row');
                     if (commentInputRow) {
                         commentInputRow.before(commentsDiv);
@@ -1789,10 +1908,11 @@
                 // 获取刚刚添加的评论（数组最后一个）
                 const newComment = post.comments[post.comments.length - 1];
                 const cu = getAcc(newComment.userId) || { nickname: '未知' };
-                const isAI = newComment.userId === AI_ID;
+                const isAI = cu?.isAI;
+                const badgeHtml = getBadgeHtml(cu);
                 const commentHTML = `<div class="comment-item">
     <div class="comment-content">
-        <span class="comment-user">${escapeHtml(cu.nickname)}${isAI ? '<span class="ai-comment-badge">虚拟评论员</span>' : ''}：</span>
+        <span class="comment-user">${escapeHtml(cu.nickname)}${badgeHtml}：</span>
         <span class="${isAI ? 'ai-comment-text' : ''}">${parseMarkdown(newComment.text)}</span>
         <span class="comment-time">${formatTime(newComment.timestamp)}</span>
     </div>
@@ -1849,7 +1969,8 @@
                 if (!text) return;
                 const post = posts.find(p => p.id === id);
                 if (!post) return;
-                post.comments.push({ id: 'cmt_ai_' + Date.now(), userId: AI_ID, text, timestamp: Date.now() });
+                const commentAIId = activeAIId || accounts.find(a => a.isAI)?.id;
+                post.comments.push({ id: 'cmt_ai_' + Date.now(), userId: commentAIId, text, timestamp: Date.now() });
                 savePosts();
                 inp.value = '';
                 inp.dataset.fromAI = 'false';
@@ -1871,7 +1992,9 @@
                     btn.textContent = '⏳';
                 }
                 const author = getAcc(post.userId)?.nickname || '用户';
-                let contentDesc = `${author} 发布了动态`;
+                const timeDesc = formatTime(post.timestamp);    // ✅ 使用已有的函数
+
+                let contentDesc = `${author} 于 ${timeDesc} 发布了动态`;
                 if (post.text) contentDesc += `：${post.text}`;
                 const imgCnt = post.images?.length || 0,
                     vidCnt = post.videos?.length || 0;
@@ -1882,18 +2005,27 @@
                     contentDesc += ` 分享了${parts.join('和')}。`;
                 }
                 contentDesc += ' 请写一句评论。';
-                let systemPrompt = aiConfig.systemPrompt || '你是一个友善的朋友，请用简短的口语为朋友圈生成评论。';
-                if (aiConfig.style) systemPrompt += ` 你的评论风格要：${aiConfig.style}。`;
+                const activeAIAcc = getAcc(activeAIId);
+                const fixedSuffix = '，请用简短的口语为朋友圈生成评论。';
+
+                let systemPrompt =
+                    (activeAIAcc?.systemPrompt || aiConfig.systemPrompt || '你是一个友善的朋友')
+                    + fixedSuffix;
+
+                const activeStyle = activeAIAcc?.style || aiConfig.style || '';
+                if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
                 const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: contentDesc }];
                 if (post.comments.length) messages.push({
                     role: 'assistant',
-                    content: post.comments.slice(-3).map(c => `${getAcc(c.userId)?.nickname || '用户'}: ${c.text}`).join('\n')
+                    content: post.comments.slice(-20).map(c => `${getAcc(c.userId)?.nickname || '用户'}: ${c.text}`).join('\n')
                 });
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), (aiConfig.timeout || 15) * 1000);
                 try {
                     const body = { model: aiConfig.model, messages, max_tokens: 150, temperature: 0.8 };
                     if (aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
+                    const base = aiConfig.endpoint.replace(/\/+$/, ''); // 去掉末尾斜杠
+                    const url = base + '/chat/completions';
                     const res = await fetch(new URL('/chat/completions', aiConfig.endpoint).href, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey || 'no-key'}` },
@@ -1979,6 +2111,7 @@
                     const post = posts.find(p => p.id === editingPostId);
                     if (post) {
                         const oldIds = [...(post.images || []), ...(post.videos || [])];
+                        post.userId = currentId;
                         post.text = text;
                         post.images = imgIds;
                         post.videos = vidIds;
@@ -2049,25 +2182,88 @@
             }
 
             function switchAccount(id) {
-                if (id === currentId || id === AI_ID) { $dropdown.style.display = 'none'; return; }
+                if (id === currentId) { $dropdown.style.display = 'none'; return; }
+                // 保存当前输入区状态
+                const savedText = $publishText.value;
+                const savedFiles = publishFiles.slice();
+                const savedEditingId = editingPostId;
+                const savedSchedule = $('#scheduleTime').value;
+                const savedScheduleDisplay = $('#scheduleTime').style.display;
+                const savedBtnText = $btnPublish.textContent;
+
                 currentId = id;
                 localStorage.setItem(KEY_CUR, id);
                 $dropdown.style.display = 'none';
                 renderHeader();
                 renderDropdown();
                 renderTimeline(true);
-                editingPostId = null;
-                $btnPublish.textContent = '发布';
-                $('#scheduleTime').style.display = 'none';
-                $('#scheduleTime').value = '';
+                updatePublishBtn();
+
+                // 恢复输入区状态
+                $publishText.value = savedText;
+                publishFiles = savedFiles;
+                editingPostId = savedEditingId;
+                $('#scheduleTime').value = savedSchedule;
+                $('#scheduleTime').style.display = savedScheduleDisplay;
+                $btnPublish.textContent = savedBtnText;
+                renderPublishPreview();
                 updatePublishBtn();
             }
 
+            function addAIAccount() {
+                $dropdown.style.display = 'none';
+                const colors = ['#6c5ce7', '#e17055', '#00b894', '#0984e3', '#fd79a8', '#fdcb6e'];
+                const overlay = document.createElement('div');
+                overlay.className = 'modal-overlay';
+                overlay.innerHTML = `
+        <div class="modal-dialog">
+            <h3>🤖 添加 AI 人设</h3>
+            <label>人设名称</label>
+            <input type="text" id="aiPersonaName" placeholder="例如：毒舌吐槽者" maxlength="20">
+            <label>系统提示词</label>
+            <textarea id="aiPersonaPrompt" rows="3" placeholder="你是一个..."></textarea>
+            <label>评论风格</label>
+            <input type="text" id="aiPersonaStyle" placeholder="例如：幽默、犀利（可留空）">
+            <div class="btn-row">
+                <button class="btn btn-cancel" id="cancelAddAI">取消</button>
+                <button class="btn btn-save" id="confirmAddAI">添加</button>
+            </div>
+        </div>`;
+                document.body.appendChild(overlay);
+                overlay.querySelector('#aiPersonaName').focus();
+                overlay.querySelector('#cancelAddAI').onclick = () => overlay.remove();
+                overlay.querySelector('#confirmAddAI').onclick = () => {
+                    const name = overlay.querySelector('#aiPersonaName').value.trim();
+                    if (!name) { showToast('请输入人设名称'); return; }
+                    const id = 'acc_ai_' + Date.now();
+                    accounts.push({
+                        id, nickname: name, isAI: true,
+                        avatarBg: colors[Math.floor(Math.random() * colors.length)],
+                        systemPrompt: overlay.querySelector('#aiPersonaPrompt').value.trim(),
+                        style: overlay.querySelector('#aiPersonaStyle').value.trim(),
+                        badgeText: '', badgeColor: '#888',
+                        createdAt: Date.now()
+                    });
+                    activeAIId = id;
+                    localStorage.setItem(KEY_ACTIVE_AI, activeAIId);
+                    saveAccounts();
+                    overlay.remove();
+                    renderDropdown();
+                    showToast('✅ 已添加 AI 人设：' + name);
+                };
+                overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+            }
+
             function addAccount() {
-                const name = prompt('昵称'); if (!name?.trim()) return;
                 const colors = ['#f5af19', '#e74c3c', '#3498db', '#2ecc71', '#9b59b6', '#1abc9c'];
                 accounts.push({
-                    id: 'acc_' + Date.now(), nickname: name.trim(), avatar: '', avatarBg: colors[Math.floor(Math.random() * colors.length)], createdAt: Date.now()
+                    id: 'acc_' + Date.now(),
+                    nickname: '新账号',
+                    avatar: '',
+                    avatarBg: colors[Math.floor(Math.random() * colors.length)],
+                    badgeText: '',      // 新账号默认无徽章
+                    badgeColor: '#888',
+                    createdAt: Date.now()
                 });
                 saveAccounts();
                 currentId = accounts[accounts.length - 1].id;
@@ -2085,27 +2281,17 @@
                 overlay.className = 'modal-overlay';
                 overlay.innerHTML = `
         <div class="modal-dialog">
-            <h3>${acc.isAI ? '编辑 AI 助手' : '编辑账号'}</h3>
+            <h3>${acc.isAI ? '🤖 编辑 AI 人设' : '编辑账号'}</h3>
             <label>昵称</label>
             <input type="text" id="editNickname" value="${escapeHtml(acc.nickname)}" maxlength="20">
+            ${acc.isAI ? `<label>系统提示词</label>
+            <textarea id="editSystemPrompt" rows="3" placeholder="你是一个...">${escapeHtml(acc.systemPrompt || '')}</textarea>
+            <label>评论风格</label>
+            <input type="text" id="editStyle" value="${escapeHtml(acc.style || '')}" placeholder="例如：幽默、毒舌">` : ''}
             <label>头像</label>
             <input type="file" id="editAvatarInput" accept="image/*" style="display:block;margin-top:4px;">
             <div class="builtin-avatar-list">
-<div class="builtin-av" data-uri="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIzMCIgZmlsbD0iI0ZGRDkzRCIvPjxjaXJjbGUgY3g9IjE4IiBjeT0iMjYiIHI9IjQiIGZpbGw9IiMzMzMiLz48Y2lyY2xlIGN4PSI0NiIgY3k9IjI2IiByPSI0IiBmaWxsPSIjMzMzIi8+PGVsbGlwc2UgY3g9IjMyIiBjeT0iNDAiIHJ4PSI2IiByeT0iNCIgZmlsbD0iI0ZGOEE4MCIvPjxwb2x5Z29uIHBvaW50cz0iMTIsOCAxOCwyMiA2LDIyIiBmaWxsPSIjRkZCNzREIi8+PHBvbHlnb24gcG9pbnRzPSI1Miw4IDU4LDIyIDQ2LDIyIiBmaWxsPSIjRkZCNzREIi8+PGxpbmUgeDE9IjE0IiB5MT0iMzQiIHgyPSI0IiB5Mj0iMzIiIHN0cm9rZT0iIzg4OCIgc3Ryb2tlLXdpZHRoPSIxLjUiLz48bGluZSB4MT0iMTQiIHkxPSIzNiIgeDI9IjQiIHkyPSIzNiIgc3Ryb2tlPSIjODg4IiBzdHJva2Utd2lkdGg9IjEuNSIvPjxsaW5lIHgxPSI1MCIgeTE9IjM0IiB4Mj0iNjAiIHkyPSIzMiIgc3Ryb2tlPSIjODg4IiBzdHJva2Utd2lkdGg9IjEuNSIvPjxsaW5lIHgxPSI1MCIgeTE9IjM2IiB4Mj0iNjAiIHkyPSIzNiIgc3Ryb2tlPSIjODg4IiBzdHJva2Utd2lkdGg9IjEuNSIvPjwvc3ZnPg==">
-    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIzMCIgZmlsbD0iI0ZGRDkzRCIvPjxjaXJjbGUgY3g9IjE4IiBjeT0iMjYiIHI9IjQiIGZpbGw9IiMzMzMiLz48Y2lyY2xlIGN4PSI0NiIgY3k9IjI2IiByPSI0IiBmaWxsPSIjMzMzIi8+PGVsbGlwc2UgY3g9IjMyIiBjeT0iNDAiIHJ4PSI2IiByeT0iNCIgZmlsbD0iI0ZGOEE4MCIvPjxwb2x5Z29uIHBvaW50cz0iMTIsOCAxOCwyMiA2LDIyIiBmaWxsPSIjRkZCNzREIi8+PHBvbHlnb24gcG9pbnRzPSI1Miw4IDU4LDIyIDQ2LDIyIiBmaWxsPSIjRkZCNzREIi8+PGxpbmUgeDE9IjE0IiB5MT0iMzQiIHgyPSI0IiB5Mj0iMzIiIHN0cm9rZT0iIzg4OCIgc3Ryb2tlLXdpZHRoPSIxLjUiLz48bGluZSB4MT0iMTQiIHkxPSIzNiIgeDI9IjQiIHkyPSIzNiIgc3Ryb2tlPSIjODg4IiBzdHJva2Utd2lkdGg9IjEuNSIvPjxsaW5lIHgxPSI1MCIgeTE9IjM0IiB4Mj0iNjAiIHkyPSIzMiIgc3Ryb2tlPSIjODg4IiBzdHJva2Utd2lkdGg9IjEuNSIvPjxsaW5lIHgxPSI1MCIgeTE9IjM2IiB4Mj0iNjAiIHkyPSIzNiIgc3Ryb2tlPSIjODg4IiBzdHJva2Utd2lkdGg9IjEuNSIvPjwvc3ZnPg==" alt="小猫">
-</div>
-<div class="builtin-av" data-uri="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIzMCIgZmlsbD0iI0M4RTZDOSIvPjxlbGxpcHNlIGN4PSIxNCIgY3k9IjE4IiByeD0iOCIgcnk9IjEyIiBmaWxsPSIjNzk1NTQ4Ii8+PGVsbGlwc2UgY3g9IjUwIiBjeT0iMTgiIHJ4PSI4IiByeT0iMTIiIGZpbGw9IiM3OTU1NDgiLz48Y2lyY2xlIGN4PSIyMCIgY3k9IjI2IiByPSI0IiBmaWxsPSIjMzMzIi8+PGNpcmNsZSBjeD0iNDQiIGN5PSIyNiIgcj0iNCIgZmlsbD0iIzMzMyIvPjxlbGxpcHNlIGN4PSIzMiIgY3k9IjQwIiByeD0iOCIgcnk9IjUiIGZpbGw9IiNGRkUwODIiLz48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIzIiBmaWxsPSIjMzMzIi8+PC9zdmc+">
-    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIzMCIgZmlsbD0iI0M4RTZDOSIvPjxlbGxpcHNlIGN4PSIxNCIgY3k9IjE4IiByeD0iOCIgcnk9IjEyIiBmaWxsPSIjNzk1NTQ4Ii8+PGVsbGlwc2UgY3g9IjUwIiBjeT0iMTgiIHJ4PSI4IiByeT0iMTIiIGZpbGw9IiM3OTU1NDgiLz48Y2lyY2xlIGN4PSIyMCIgY3k9IjI2IiByPSI0IiBmaWxsPSIjMzMzIi8+PGNpcmNsZSBjeD0iNDQiIGN5PSIyNiIgcj0iNCIgZmlsbD0iIzMzMyIvPjxlbGxpcHNlIGN4PSIzMiIgY3k9IjQwIiByeD0iOCIgcnk9IjUiIGZpbGw9IiNGRkUwODIiLz48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIzIiBmaWxsPSIjMzMzIi8+PC9zdmc+" alt="小狗">
-</div>
-<div class="builtin-av" data-uri="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIyOCIgZmlsbD0iI0Y0OEZCMSIvPjxlbGxpcHNlIGN4PSIyMiIgY3k9IjgiIHJ4PSI1IiByeT0iMTYiIGZpbGw9IiNGOEJCRDAiIHN0cm9rZT0iI0Y0OEZCMSIgc3Ryb2tlLXdpZHRoPSIyIi8+PGVsbGlwc2UgY3g9IjQyIiBjeT0iOCIgcng9IjUiIHJ5PSIxNiIgZmlsbD0iI0Y4QkJEMCIgc3Ryb2tlPSIjRjQ4RkIxIiBzdHJva2Utd2lkdGg9IjIiLz48Y2lyY2xlIGN4PSIyMCIgY3k9IjI4IiByPSI0IiBmaWxsPSIjMzMzIi8+PGNpcmNsZSBjeD0iNDQiIGN5PSIyOCIgcj0iNCIgZmlsbD0iIzMzMyIvPjxlbGxpcHNlIGN4PSIyNCIgY3k9IjM4IiByeD0iNSIgcnk9IjMiIGZpbGw9IiNGRjgwQUIiLz48Y2lyY2xlIGN4PSIzMiIgY3k9IjM2IiByPSIyIiBmaWxsPSIjMzMzIi8+PHBhdGggZD0iTTI4IDQ0IFEzMiA0OCAzNiA0NCIgc3Ryb2tlPSIjMzMzIiBzdHJva2Utd2lkdGg9IjIiIGZpbGw9Im5vbmUiLz48L3N2Zz4=">
-    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIyOCIgZmlsbD0iI0Y0OEZCMSIvPjxlbGxpcHNlIGN4PSIyMiIgY3k9IjgiIHJ4PSI1IiByeT0iMTYiIGZpbGw9IiNGOEJCRDAiIHN0cm9rZT0iI0Y0OEZCMSIgc3Ryb2tlLXdpZHRoPSIyIi8+PGVsbGlwc2UgY3g9IjQyIiBjeT0iOCIgcng9IjUiIHJ5PSIxNiIgZmlsbD0iI0Y4QkJEMCIgc3Ryb2tlPSIjRjQ4RkIxIiBzdHJva2Utd2lkdGg9IjIiLz48Y2lyY2xlIGN4PSIyMCIgY3k9IjI4IiByPSI0IiBmaWxsPSIjMzMzIi8+PGNpcmNsZSBjeD0iNDQiIGN5PSIyOCIgcj0iNCIgZmlsbD0iIzMzMyIvPjxlbGxpcHNlIGN4PSIyNCIgY3k9IjM4IiByeD0iNSIgcnk9IjMiIGZpbGw9IiNGRjgwQUIiLz48Y2lyY2xlIGN4PSIzMiIgY3k9IjM2IiByPSIyIiBmaWxsPSIjMzMzIi8+PHBhdGggZD0iTTI4IDQ0IFEzMiA0OCAzNiA0NCIgc3Ryb2tlPSIjMzMzIiBzdHJva2Utd2lkdGg9IjIiIGZpbGw9Im5vbmUiLz48L3N2Zz4=" alt="兔子">
-</div>
-<div class="builtin-av" data-uri="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIyOCIgZmlsbD0iIzgxRDRGQSIvPjxwYXRoIGQ9Ik0yMCAxNCBRMjIgOCAyOCAxMiIgZmlsbD0iI0ZGQjc0RCIvPjxwYXRoIGQ9Ik0yOCAxMiBRMzQgNiAzNiAxNCIgZmlsbD0iI0ZGQjc0RCIvPjxjaXJjbGUgY3g9IjI0IiBjeT0iMjgiIHI9IjMiIGZpbGw9IiMzMzMiLz48Y2lyY2xlIGN4PSI0MCIgY3k9IjI4IiByPSIzIiBmaWxsPSIjMzMzIi8+PHBvbHlnb24gcG9pbnRzPSIzMiwzNCAzNiwzOCAyOCwzOCIgZmlsbD0iI0ZGOEE2NSIvPjxwYXRoIGQ9Ik0xNCAzNiBRMTggMjggMjQgMzQiIGZpbGw9IiM0RkMzRjciLz48cGF0aCBkPSJNNTAgMzYgUTQ2IDI4IDQwIDM0IiBmaWxsPSIjNEZDM0Y3Ii8+PC9zdmc+">
-    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIyOCIgZmlsbD0iIzgxRDRGQSIvPjxwYXRoIGQ9Ik0yMCAxNCBRMjIgOCAyOCAxMiIgZmlsbD0iI0ZGQjc0RCIvPjxwYXRoIGQ9Ik0yOCAxMiBRMzQgNiAzNiAxNCIgZmlsbD0iI0ZGQjc0RCIvPjxjaXJjbGUgY3g9IjI0IiBjeT0iMjgiIHI9IjMiIGZpbGw9IiMzMzMiLz48Y2lyY2xlIGN4PSI0MCIgY3k9IjI4IiByPSIzIiBmaWxsPSIjMzMzIi8+PHBvbHlnb24gcG9pbnRzPSIzMiwzNCAzNiwzOCAyOCwzOCIgZmlsbD0iI0ZGOEE2NSIvPjxwYXRoIGQ9Ik0xNCAzNiBRMTggMjggMjQgMzQiIGZpbGw9IiM0RkMzRjciLz48cGF0aCBkPSJNNTAgMzYgUTQ2IDI4IDQwIDM0IiBmaWxsPSIjNEZDM0Y3Ii8+PC9zdmc+" alt="小鸟">
-</div>
-<div class="builtin-av" data-uri="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIzMCIgZmlsbD0iI0ZGRjE3NiIvPjxjaXJjbGUgY3g9IjIyIiBjeT0iMjgiIHI9IjQiIGZpbGw9IiMzMzMiLz48Y2lyY2xlIGN4PSI0MiIgY3k9IjI4IiByPSI0IiBmaWxsPSIjMzMzIi8+PHBhdGggZD0iTTIwIDQyIFEzMiA1MiA0NCA0MiIgc3Ryb2tlPSIjMzMzIiBzdHJva2Utd2lkdGg9IjMiIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxjaXJjbGUgY3g9IjE2IiBjeT0iNDAiIHI9IjUiIGZpbGw9IiNGRkFCOTEiIG9wYWNpdHk9IjAuNSIvPjxjaXJjbGUgY3g9IjQ4IiBjeT0iNDAiIHI9IjUiIGZpbGw9IiNGRkFCOTEiIG9wYWNpdHk9IjAuNSIvPjwvc3ZnPg==">
-    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIzMCIgZmlsbD0iI0ZGRjE3NiIvPjxjaXJjbGUgY3g9IjIyIiBjeT0iMjgiIHI9IjQiIGZpbGw9IiMzMzMiLz48Y2lyY2xlIGN4PSI0MiIgY3k9IjI4IiByPSI0IiBmaWxsPSIjMzMzIi8+PHBhdGggZD0iTTIwIDQyIFEzMiA1MiA0NCA0MiIgc3Ryb2tlPSIjMzMzIiBzdHJva2Utd2lkdGg9IjMiIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxjaXJjbGUgY3g9IjE2IiBjeT0iNDAiIHI9IjUiIGZpbGw9IiNGRkFCOTEiIG9wYWNpdHk9IjAuNSIvPjxjaXJjbGUgY3g9IjQ4IiBjeT0iNDAiIHI9IjUiIGZpbGw9IiNGRkFCOTEiIG9wYWNpdHk9IjAuNSIvPjwvc3ZnPg==" alt="笑脸">
-</div>
+                <!-- ... 内置头像略 ... -->
             </div>
             <div id="editAvatarPreview" style="text-align:center;margin-top:6px;">
                 ${acc.avatar?.startsWith('data:')
@@ -2114,21 +2300,48 @@
                     }
             </div>
             <p class="hint-text">选择新头像（可选），留空保持原头像</p>
+            <!-- 徽章设置 -->
+            <label>评论徽章文字</label>
+            <input type="text" id="editBadgeText" value="${escapeHtml(acc.badgeText || '')}" maxlength="10" placeholder="留空则不显示">
+            <label>徽章颜色</label>
+            <input type="text" id="editBadgeColor" value="${acc.badgeColor || '#888'}" placeholder="#888">
+            <!-- 新增：常见颜色示例 -->
+            <div class="color-examples">
+                <span class="color-sample" style="background:#e74c3c" data-color="#e74c3c"></span>
+                <span class="color-sample" style="background:#3498db" data-color="#3498db"></span>
+                <span class="color-sample" style="background:#2ecc71" data-color="#2ecc71"></span>
+                <span class="color-sample" style="background:#f39c12" data-color="#f39c12"></span>
+                <span class="color-sample" style="background:#9b59b6" data-color="#9b59b6"></span>
+                <span class="color-sample" style="background:#1abc9c" data-color="#1abc9c"></span>
+                <span class="color-sample" style="background:#e67e22" data-color="#e67e22"></span>
+                <span class="color-sample" style="background:#888" data-color="#888"></span>
+            </div>
+            <!-- -------- -->
             <div class="btn-row">
-                ${accounts.length > 1 && !acc.isAI ? `<button class="btn btn-danger" id="deleteAccountBtn">删除账号</button>` : ''}
+                ${accounts.length > 1 && (!acc.isAI || accounts.filter(a => a.isAI).length > 1) ? `<button class="btn btn-danger" id="deleteAccountBtn">${acc.isAI ? '删除人设' : '删除账号'}</button>` : ''}
                 <button class="btn btn-cancel" id="cancelEditBtn">取消</button>
                 <button class="btn btn-save" id="saveEditBtn">保存</button>
             </div>
         </div>
     `;
                 document.body.appendChild(overlay);
-                let tempAvatar = acc.avatar;
 
+                // 新增：为颜色示例绑定点击事件
+                overlay.querySelectorAll('.color-sample').forEach(sample => {
+                    sample.addEventListener('click', function () {
+                        const colorInput = overlay.querySelector('#editBadgeColor');
+                        if (colorInput) {
+                            colorInput.value = this.dataset.color;
+                            colorInput.focus();
+                        }
+                    });
+                });
+
+                let tempAvatar = acc.avatar;
                 overlay.querySelectorAll('.builtin-av').forEach(av => {
                     av.addEventListener('click', function () {
-                        const uri = this.dataset.uri;
-                        tempAvatar = uri;
-                        overlay.querySelector('#editAvatarPreview').innerHTML = `<img src="${uri}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border);">`;
+                        tempAvatar = this.dataset.uri;
+                        overlay.querySelector('#editAvatarPreview').innerHTML = `<img src="${tempAvatar}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border);">`;
                     });
                 });
                 overlay.querySelector('#editAvatarInput').addEventListener('change', function () {
@@ -2136,8 +2349,7 @@
                     if (file) {
                         compressImgToDataUrl(file, 200, 0.7, (dataUrl) => {
                             tempAvatar = dataUrl;
-                            overlay.querySelector('#editAvatarPreview').innerHTML =
-                                `<img src="${dataUrl}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border);">`;
+                            overlay.querySelector('#editAvatarPreview').innerHTML = `<img src="${dataUrl}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border);">`;
                         });
                     }
                 });
@@ -2147,6 +2359,13 @@
                     if (!newName) { showToast('昵称不能为空'); return; }
                     acc.nickname = newName;
                     acc.avatar = tempAvatar;
+                    // 读取徽章设置
+                    acc.badgeText = overlay.querySelector('#editBadgeText').value.trim();
+                    acc.badgeColor = overlay.querySelector('#editBadgeColor').value.trim() || '#888';
+                    if (acc.isAI) {
+                        acc.systemPrompt = overlay.querySelector('#editSystemPrompt')?.value.trim() || '';
+                        acc.style = overlay.querySelector('#editStyle')?.value.trim() || '';
+                    }
                     saveAccounts();
                     overlay.remove();
                     renderHeader();
@@ -2162,6 +2381,11 @@
                     };
                 }
                 overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+            }
+
+            function getBadgeHtml(account) {
+                if (!account?.badgeText) return '';
+                return `<span class="user-badge" style="background:${account.badgeColor || '#888'};color:#fff;">${escapeHtml(account.badgeText)}</span>`;
             }
 
             function confirmDeleteAccount(accId) {
@@ -2540,6 +2764,7 @@
                 document.querySelectorAll('.post-menu-dropdown').forEach(m => m
                     .style.display = 'none');
                 $dropdown.style.display = 'none';
+                $backupDropdown.style.display = 'none';
             });
             $('#headerUserArea').onclick = (e) => {
                 e.stopPropagation();
@@ -2549,7 +2774,6 @@
             $dropdown.onclick = (e) => {
                 e.stopPropagation();
                 if (e.target.dataset.action === 'edit') { editAccount(e.target.dataset.accountId); return; }
-                if (e.target.dataset.action === 'edit-ai') { editAccount(AI_ID); return; }
                 const item = e.target.closest('.account-dropdown-item');
                 if (item?.dataset.accountId) switchAccount(item.dataset.accountId);
                 if (e.target.id === 'btnAddAccount' || e.target.closest('#btnAddAccount')) addAccount();
@@ -2623,19 +2847,41 @@
             };
 
             $('#btnBackToTop').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
-            $('#btnExport').onclick = exportData;
-            $('#btnImport').onclick = () => {
-                const inp = document.createElement('input');
-                inp.type = 'file';
-                inp.accept = '.zip,.json';
-                inp.onchange = () => { if (inp.files[0]) importData(inp.files[0]); };
-                inp.click();
-            };
             $('#btnRefresh').onclick = async () => {
                 clearMediaCache();
                 await refreshAll();
                 showToast('🔄 已刷新');
             };
+            const $backupDropdown = $('#backupDropdown');
+            const $btnBackupMenu = $('#btnBackupMenu');
+
+            // 切换菜单显示
+            $btnBackupMenu.onclick = (e) => {
+                e.stopPropagation();
+                const isHidden = $backupDropdown.style.display === 'none' || !$backupDropdown.style.display;
+                // 关闭其他可能打开的菜单（如账号下拉）
+                $dropdown.style.display = 'none';
+                document.querySelectorAll('.post-menu-dropdown').forEach(m => m.style.display = 'none');
+                $backupDropdown.style.display = isHidden ? 'block' : 'none';
+            };
+
+            // 菜单项点击
+            $backupDropdown.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = e.target.closest('.backup-dropdown-item')?.dataset.action;
+                if (action === 'export') {
+                    $backupDropdown.style.display = 'none';
+                    exportData(); // 调用你已有的导出函数
+                } else if (action === 'import') {
+                    $backupDropdown.style.display = 'none';
+                    // 触发文件选择
+                    const inp = document.createElement('input');
+                    inp.type = 'file';
+                    inp.accept = '.zip,.json';
+                    inp.onchange = () => { if (inp.files[0]) importData(inp.files[0]); };
+                    inp.click();
+                }
+            });
 
             $('#btnToggleSearch').onclick = () => {
                 searchActive = !searchActive;
