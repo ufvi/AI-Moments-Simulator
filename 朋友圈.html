@@ -1517,25 +1517,16 @@
             let activeAIId = localStorage.getItem(KEY_ACTIVE_AI);
 
             function ensureAIAccount() {
-                // 兼容旧版单一 AI 账号（id='acc_ai'），保留并打上 isAI 标记
+                // 兼容旧版单一 AI 账号（id='acc_ai'），为其打上 isAI 标记
                 accounts.filter(a => a.id === 'acc_ai').forEach(a => { a.isAI = true; });
-                // 确保至少存在一个 AI 人设
-                if (!accounts.find(a => a.isAI)) {
-                    accounts.push({
-                        id: 'acc_ai_' + Date.now(), nickname: 'AI助手', avatar: '',
-                        avatarBg: '#6c5ce7', isAI: true,
-                        systemPrompt: '你是一个友善的朋友，请用简短的口语为朋友圈生成评论。',
-                        style: '', createdAt: Date.now()
-                    });
-                    saveAccounts();
-                }
-                // 确保 activeAIId 指向合法的 AI 账号
-                if (!activeAIId || !accounts.find(a => a.id === activeAIId && a.isAI)) {
+
+                // 确保 activeAIId 指向一个仍然存在的 AI 账号，但不自动创建新账号
+                if (activeAIId && !accounts.find(a => a.id === activeAIId && a.isAI)) {
                     activeAIId = accounts.find(a => a.isAI)?.id || null;
                     if (activeAIId) localStorage.setItem(KEY_ACTIVE_AI, activeAIId);
+                    else localStorage.removeItem(KEY_ACTIVE_AI);
                 }
             }
-
             function getAcc(id) { return accounts.find(a => a.id === id) || null; }
             function getCurAcc() { return getAcc(currentId) || accounts[0] || null; }
 
@@ -1604,25 +1595,40 @@
             function renderDropdown() {
                 const normal = accounts.filter(a => !a.isAI);
                 const aiAccounts = accounts.filter(a => a.isAI);
+
+                // ===== 新增：统计每个 AI 账号的评论数 =====
+                const aiCommentCounts = {};
+                aiAccounts.forEach(a => { aiCommentCounts[a.id] = 0; });
+                posts.forEach(p => {
+                    p.comments.forEach(c => {
+                        if (aiCommentCounts[c.userId] !== undefined) {
+                            aiCommentCounts[c.userId]++;
+                        }
+                    });
+                });
+                // =========================================
+
                 let html = '';
 
-                // ── AI 人设区 ──
+                // AI 人设区
                 html += `<div style="padding:6px 14px 4px;font-size:11px;color:var(--text-light);font-weight:600;letter-spacing:.5px;">🤖 AI 虚拟评论员</div>`;
                 html += aiAccounts.map(a => {
+                    const count = aiCommentCounts[a.id] || 0;
                     const isActive = a.id === activeAIId;
                     return `<div class="account-dropdown-item${isActive ? ' active' : ''}" data-ai-id="${a.id}" style="${isActive ? 'background:#f0eeff;' : 'background:var(--btn-bg);'}">
-                        <div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:13px;flex-shrink:0;">🤖</div>
-                        <span>${escapeHtml(a.nickname)}</span>
-                        ${isActive ? '<span class="check-mark" style="color:var(--ai-purple);">✓</span>' : ''}
-                        <span class="account-dropdown-edit" data-action="edit-ai" data-account-id="${a.id}">✎</span>
-                    </div>`;
+            <div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:13px;flex-shrink:0;">🤖</div>
+            <span>${escapeHtml(a.nickname)}</span>
+            <span style="margin-left:auto;color:var(--text-light);font-size:11px;white-space:nowrap;">${count}条评论</span>
+            ${isActive ? '<span class="check-mark" style="color:var(--ai-purple);">✓</span>' : ''}
+            <span class="account-dropdown-edit" data-action="edit-ai" data-account-id="${a.id}">✎</span>
+        </div>`;
                 }).join('');
                 html += `<div class="account-dropdown-add" id="btnAddAIAccount" style="color:var(--ai-purple);">+ 添加 AI 人设</div>`;
 
-                // ── 分隔线 ──
+                // 分隔线
                 html += `<div style="border-top:1px solid var(--border);margin:2px 0;"></div>`;
 
-                // ── 普通账号区 ──
+                // 普通账号区（不变）
                 html += `<div style="padding:6px 14px 4px;font-size:11px;color:var(--text-light);font-weight:600;letter-spacing:.5px;">👤 普通账号</div>`;
                 html += normal.map(a => {
                     const isActive = a.id === currentId;
@@ -1635,7 +1641,7 @@
 
                 $dropdown.innerHTML = html;
 
-                // AI 人设点击切换
+                // 后续的事件绑定保持不变
                 $dropdown.querySelectorAll('[data-ai-id]').forEach(item => {
                     item.addEventListener('click', (e) => {
                         e.stopPropagation();
@@ -1963,13 +1969,17 @@
             }
 
             function submitAIComment(id) {
+                const commentAIId = activeAIId || accounts.find(a => a.isAI)?.id;
+                if (!commentAIId) {
+                    showToast('⚠️ 没有可用的AI账号，请添加AI人设');
+                    return;
+                }
                 const inp = document.getElementById('commentInput-' + id);
                 if (!inp) return;
                 const text = inp.value.trim();
                 if (!text) return;
                 const post = posts.find(p => p.id === id);
                 if (!post) return;
-                const commentAIId = activeAIId || accounts.find(a => a.isAI)?.id;
                 post.comments.push({ id: 'cmt_ai_' + Date.now(), userId: commentAIId, text, timestamp: Date.now() });
                 savePosts();
                 inp.value = '';
@@ -1983,6 +1993,10 @@
             }
 
             async function generateAIComment(postId) {
+                if (!activeAIId && !accounts.some(a => a.isAI)) {
+                    showToast('⚠️ 请先在“账号切换”中添加AI人设');
+                    return;
+                }
                 const post = posts.find(p => p.id === postId);
                 if (!post) return;
                 if (!aiConfig.endpoint || !aiConfig.model) { showToast('⚠️ 请先配置AI'); return; }
@@ -2318,7 +2332,7 @@
             </div>
             <!-- -------- -->
             <div class="btn-row">
-                ${accounts.length > 1 && (!acc.isAI || accounts.filter(a => a.isAI).length > 1) ? `<button class="btn btn-danger" id="deleteAccountBtn">${acc.isAI ? '删除人设' : '删除账号'}</button>` : ''}
+                ${(accounts.length > 1 || (acc.isAI && accounts.some(a => !a.isAI))) ? `<button class="btn btn-danger" id="deleteAccountBtn">${acc.isAI ? '删除人设' : '删除账号'}</button>` : ''}
                 <button class="btn btn-cancel" id="cancelEditBtn">取消</button>
                 <button class="btn btn-save" id="saveEditBtn">保存</button>
             </div>
@@ -2391,17 +2405,36 @@
             function confirmDeleteAccount(accId) {
                 const overlay = document.createElement('div');
                 overlay.className = 'modal-overlay';
-                overlay.innerHTML =
-                    `<div class="modal-dialog"><p>确定删除此账号吗？其动态将保留但显示为“未知用户”。</p><div class="btn-row"><button class="btn btn-cancel" id="cancelDel">取消</button><button class="btn btn-danger" id="confirmDel">删除</button></div></div>`;
+                overlay.innerHTML = `<div class="modal-dialog"><p>确定删除此账号吗？其动态将保留但显示为“未知用户”。</p><div class="btn-row"><button class="btn btn-cancel" id="cancelDel">取消</button><button class="btn btn-danger" id="confirmDel">删除</button></div></div>`;
                 document.body.appendChild(overlay);
                 overlay.querySelector('#cancelDel').onclick = () => overlay.remove();
                 overlay.querySelector('#confirmDel').onclick = () => {
                     accounts = accounts.filter(a => a.id !== accId);
+
+                    // 如果删光所有 AI 账号，清除当前选中的 AI
+                    if (activeAIId === accId || !accounts.some(a => a.isAI)) {
+                        activeAIId = null;
+                        localStorage.removeItem(KEY_ACTIVE_AI);
+                    }
+
+                    // 如果没有任何账号剩余，自动创建一个默认普通账号
+                    if (accounts.length === 0) {
+                        accounts.push({
+                            id: 'acc_' + Date.now(),
+                            nickname: '我',
+                            avatar: '',
+                            avatarBg: '#3498db',
+                            createdAt: Date.now()
+                        });
+                    }
+
                     saveAccounts();
+
                     if (currentId === accId) {
                         currentId = accounts[0]?.id || null;
                         localStorage.setItem(KEY_CUR, currentId);
                     }
+
                     overlay.remove();
                     renderHeader();
                     renderDropdown();
@@ -2637,7 +2670,6 @@
                     if (data.aiConfig) { aiConfig = { ...aiConfig, ...data.aiConfig }; saveAIConfig(); }
                 }
 
-                ensureAIAccount();
                 clearMediaCache();
                 renderHeader();
                 renderDropdown();
@@ -2942,11 +2974,10 @@
 
                 accounts = await getAppData(KEY_ACC);
                 if (!accounts) {
-                    // 如果数据库中没有数据，检查是否老版存在 LocalStorage 中，并迁移
                     accounts = lsAccounts.length ? lsAccounts : [];
                     if (accounts.length) {
                         saveAccounts();
-                        localStorage.removeItem(KEY_ACC); // 迁移完擦除
+                        localStorage.removeItem(KEY_ACC);
                     }
                 }
 
@@ -2955,49 +2986,65 @@
                     posts = lsPosts.length ? lsPosts : [];
                     if (posts.length) {
                         savePosts();
-                        localStorage.removeItem(KEY_POSTS); // 迁移完擦除
+                        localStorage.removeItem(KEY_POSTS);
                     }
                 }
-                // ------------------------
 
-                ensureAIAccount();
+                if (!accounts.some(a => !a.isAI)) {
+                    // 创建两个初始普通账号
+                    accounts.push(
+                        { id: 'acc_' + Date.now(), nickname: '我', avatar: '', avatarBg: '#3498db', badgeText: '我',badgeColor: '#3498db', createdAt: Date.now() },
+                        { id: 'acc_' + (Date.now() + 1), nickname: '小明', avatar: '', avatarBg: '#f5af19', badgeText: '好朋友',badgeColor: '#f39c12', createdAt: Date.now() }
+                    );
+                    saveAccounts();
+                }
+
+                // 修正当前账号：优先选择普通账号，其次才是AI账号
+                if (!currentId || !accounts.find(a => a.id === currentId)) {
+                    const firstNormal = accounts.find(a => !a.isAI);
+                    if (firstNormal) {
+                        currentId = firstNormal.id;
+                    } else {
+                        currentId = accounts[0]?.id; // 极端情况，至少有一个账号
+                    }
+                    localStorage.setItem(KEY_CUR, currentId);
+                }
+                // ==============================================
 
                 const restored = await restoreBackupIfNewer();
                 if (!restored) {
-                    if (!accounts.length) {
-                        const colors = ['#f5af19', '#e74c3c', '#3498db', '#2ecc71', '#9b59b6', '#1abc9c'];
-                        accounts = ['小明', '小红', '小刚'].map((n, i) => ({
-                            id: 'acc_' + Date.now() + '_' + i,
-                            nickname: n, avatar: '', avatarBg: colors[i], createdAt: Date.now()
-                        }));
-                        saveAccounts();
-                    }
-                    if (!currentId || !accounts.find(a => a.id === currentId)) {
-                        currentId = accounts[0]?.id;
-                        localStorage.setItem(KEY_CUR, currentId);
-                    }
+                    // 此时 accounts 一定至少有一个普通账号，示例动态可以正常创建
                     if (!posts.length && accounts.length >= 2) {
+                        // 原有的示例动态逻辑保持不变...
                         posts = [
                             {
-                                id: 'post_demo_1', userId: accounts[1].id, text: '今天天气真好，出去散步啦！☀️',
-                                images: [], videos: [], timestamp: Date.now() - 3600000 * 5, likes: [accounts[0].id],
-                                comments: [{
-                                    id: 'c1', userId: accounts[0].id, text: '真羡慕！', timestamp: Date
-                                        .now() - 3600000 * 4
-                                }], pinned: false
+                                id: 'post_demo_1',
+                                userId: accounts[1].id,
+                                text: '今天天气真好，出去散步啦！☀️',
+                                images: [],
+                                videos: [],
+                                timestamp: Date.now() - 3600000 * 5,
+                                likes: [accounts[0].id],
+                                comments: [{ id: 'c1', userId: accounts[0].id, text: '真羡慕！', timestamp: Date.now() - 3600000 * 4 }],
+                                pinned: false
                             },
                             {
-                                id: 'post_demo_2', userId: accounts[2].id, text: '分享一本好书 📖', images: [],
-                                videos: [], timestamp: Date.now() - 3600000 * 24, likes: [accounts[0].id, accounts[
-                                    1
-                                ].id], comments: [], pinned: false
+                                id: 'post_demo_2',
+                                userId: accounts[2] ? accounts[2].id : accounts[0].id,
+                                text: '分享一本好书 📖',
+                                images: [],
+                                videos: [],
+                                timestamp: Date.now() - 3600000 * 24,
+                                likes: accounts.length >= 2 ? [accounts[0].id, accounts[1].id] : [accounts[0].id],
+                                comments: [{ id: 'c1', userId: accounts[1].id, text: '不错哦😁', timestamp: Date.now()}],
+                                pinned: false
                             }
                         ];
                         savePosts();
                     }
                 }
 
-                // 使用拿到的数据立即渲染
+                // 渲染界面
                 renderHeader();
                 renderDropdown();
                 renderTimeline(true);
