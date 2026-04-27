@@ -1993,63 +1993,102 @@
             }
 
             async function generateAIComment(postId) {
+                const post = posts.find(p => p.id === postId);
+                if (!post) return;
                 if (!activeAIId && !accounts.some(a => a.isAI)) {
                     showToast('⚠️ 请先在“账号切换”中添加AI人设');
                     return;
                 }
-                const post = posts.find(p => p.id === postId);
-                if (!post) return;
-                if (!aiConfig.endpoint || !aiConfig.model) { showToast('⚠️ 请先配置AI'); return; }
+                if (!aiConfig.endpoint || !aiConfig.model) {
+                    showToast('⚠️ 请先配置AI');
+                    return;
+                }
+
                 const btn = $timeline.querySelector(`[data-post-id="${postId}"][data-action="ai-comment"]`);
                 if (btn) {
                     btn.disabled = true;
                     btn.textContent = '⏳';
                 }
-                const author = getAcc(post.userId)?.nickname || '用户';
-                const timeDesc = formatTime(post.timestamp);    // ✅ 使用已有的函数
 
+                const activeAIAcc = getAcc(activeAIId);
+                const author = getAcc(post.userId)?.nickname || '用户';
+                const timeDesc = formatTime(post.timestamp);
+
+                // ===== 1. 构建强身份系统提示词 =====
+                const aiName = activeAIAcc?.nickname || 'AI助手';
+                const basePrompt = activeAIAcc?.systemPrompt || aiConfig.systemPrompt || '你是一个友善的朋友';
+                const fixedSuffix = '，请用简短的口语为朋友圈生成评论。';
+                let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设，不要将其他用户的评论当成你的发言。${fixedSuffix}`;
+                systemPrompt += `直接给出评论内容，不要在评论前加上“${aiName}：”或类似称呼。`;
+                const activeStyle = activeAIAcc?.style || aiConfig.style || '';
+                if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
+
+                const messages = [{ role: 'system', content: systemPrompt }];
+
+                // ===== 2. 构建用户消息（描述当前帖子） =====
                 let contentDesc = `${author} 于 ${timeDesc} 发布了动态`;
                 if (post.text) contentDesc += `：${post.text}`;
-                const imgCnt = post.images?.length || 0,
-                    vidCnt = post.videos?.length || 0;
+                const imgCnt = post.images?.length || 0;
+                const vidCnt = post.videos?.length || 0;
                 if (imgCnt || vidCnt) {
                     const parts = [];
                     if (imgCnt) parts.push(`${imgCnt}张图片`);
                     if (vidCnt) parts.push(`${vidCnt}个视频`);
                     contentDesc += ` 分享了${parts.join('和')}。`;
                 }
-                contentDesc += ' 请写一句评论。';
-                const activeAIAcc = getAcc(activeAIId);
-                const fixedSuffix = '，请用简短的口语为朋友圈生成评论。';
+                contentDesc += ' 请以你的身份写一句评论。';
+                messages.push({ role: 'user', content: contentDesc });
 
-                let systemPrompt =
-                    (activeAIAcc?.systemPrompt || aiConfig.systemPrompt || '你是一个友善的朋友')
-                    + fixedSuffix;
+                // ===== 3. 安全地添加历史对话 =====
+                if (post.comments.length) {
+                    // 只取最近15条评论，避免超长
+                    const recent = post.comments.slice(-15);
+                    // 分离当前AI的评论和其他人的评论
+                    const myComments = recent.filter(c => c.userId === activeAIId);
+                    const otherComments = recent.filter(c => c.userId !== activeAIId);
 
-                const activeStyle = activeAIAcc?.style || aiConfig.style || '';
-                if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
-                const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: contentDesc }];
-                if (post.comments.length) messages.push({
-                    role: 'assistant',
-                    content: post.comments.slice(-20).map(c => `${getAcc(c.userId)?.nickname || '用户'}: ${c.text}`).join('\n')
-                });
+                    // 先添加其他用户的评论，作为 user 消息（避免冒充助手）
+                    if (otherComments.length) {
+                        let othersText = otherComments
+                            .map(c => `${getAcc(c.userId)?.nickname || '用户'}：${c.text}`)
+                            .join('\n');
+                        messages.push({
+                            role: 'user',
+                            content: `已有的其他用户评论：\n${othersText}`
+                        });
+                    }
+
+                    // 再添加当前AI自己以前的评论，作为 assistant 消息（真实历史）
+                    if (myComments.length) {
+                        let myText = myComments.map(c => c.text).join('\n');
+                        messages.push({
+                            role: 'assistant',
+                            content: myText
+                        });
+                    }
+                }
+
+                // ===== 4. 调用 API =====
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), (aiConfig.timeout || 15) * 1000);
                 try {
                     const body = { model: aiConfig.model, messages, max_tokens: 150, temperature: 0.8 };
                     if (aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
-                    const base = aiConfig.endpoint.replace(/\/+$/, ''); // 去掉末尾斜杠
+                    const base = aiConfig.endpoint.replace(/\/+$/, '');
                     const url = base + '/chat/completions';
-                    const res = await fetch(new URL('/chat/completions', aiConfig.endpoint).href, {
+                    const res = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey || 'no-key'}` },
-                        body: JSON.stringify(body), signal: controller.signal
+                        body: JSON.stringify(body),
+                        signal: controller.signal
                     });
                     clearTimeout(timeoutId);
                     if (!res.ok) throw new Error(`API ${res.status}`);
                     const data = await res.json();
                     const reply = data.choices?.[0]?.message?.content?.trim();
                     if (!reply) throw new Error('未生成有效回复');
+
+                    // 填入输入框
                     const inp = document.getElementById('commentInput-' + postId);
                     if (inp) {
                         inp.value = reply;
@@ -2402,46 +2441,33 @@
                 return `<span class="user-badge" style="background:${account.badgeColor || '#888'};color:#fff;">${escapeHtml(account.badgeText)}</span>`;
             }
 
-            function confirmDeleteAccount(accId) {
-                const overlay = document.createElement('div');
-                overlay.className = 'modal-overlay';
-                overlay.innerHTML = `<div class="modal-dialog"><p>确定删除此账号吗？其动态将保留但显示为“未知用户”。</p><div class="btn-row"><button class="btn btn-cancel" id="cancelDel">取消</button><button class="btn btn-danger" id="confirmDel">删除</button></div></div>`;
-                document.body.appendChild(overlay);
-                overlay.querySelector('#cancelDel').onclick = () => overlay.remove();
-                overlay.querySelector('#confirmDel').onclick = () => {
-                    accounts = accounts.filter(a => a.id !== accId);
+            accounts = accounts.filter(a => a.id !== accId);
 
-                    // 如果删光所有 AI 账号，清除当前选中的 AI
-                    if (activeAIId === accId || !accounts.some(a => a.isAI)) {
-                        activeAIId = null;
-                        localStorage.removeItem(KEY_ACTIVE_AI);
-                    }
+// 如果删光所有 AI 账号，清除当前选中的 AI
+if (activeAIId === accId || !accounts.some(a => a.isAI)) {
+    activeAIId = null;
+    localStorage.removeItem(KEY_ACTIVE_AI);
+}
 
-                    // 如果没有任何账号剩余，自动创建一个默认普通账号
-                    if (accounts.length === 0) {
-                        accounts.push({
-                            id: 'acc_' + Date.now(),
-                            nickname: '我',
-                            avatar: '',
-                            avatarBg: '#3498db',
-                            createdAt: Date.now()
-                        });
-                    }
+// 确保当前账号始终为普通账号（不会被 AI 账号顶替）
+if (currentId === accId) {
+    let newAcc = accounts.find(a => !a.isAI);  // 优先选普通账号
+    if (!newAcc) {
+        // 没有普通账号了，创建一个默认的
+        newAcc = {
+            id: 'acc_' + Date.now(),
+            nickname: '我',
+            avatar: '',
+            avatarBg: '#3498db',
+            createdAt: Date.now()
+        };
+        accounts.push(newAcc);
+    }
+    currentId = newAcc.id;
+    localStorage.setItem(KEY_CUR, currentId);
+}
 
-                    saveAccounts();
-
-                    if (currentId === accId) {
-                        currentId = accounts[0]?.id || null;
-                        localStorage.setItem(KEY_CUR, currentId);
-                    }
-
-                    overlay.remove();
-                    renderHeader();
-                    renderDropdown();
-                    renderTimeline(true);
-                    showToast('🗑️ 账号已删除');
-                };
-            }
+saveAccounts();
 
             function renderPublishPreview() {
                 $publishPreview.innerHTML = publishFiles.map((mf, i) =>
@@ -2993,8 +3019,8 @@
                 if (!accounts.some(a => !a.isAI)) {
                     // 创建两个初始普通账号
                     accounts.push(
-                        { id: 'acc_' + Date.now(), nickname: '我', avatar: '', avatarBg: '#3498db', badgeText: '我',badgeColor: '#3498db', createdAt: Date.now() },
-                        { id: 'acc_' + (Date.now() + 1), nickname: '小明', avatar: '', avatarBg: '#f5af19', badgeText: '好朋友',badgeColor: '#f39c12', createdAt: Date.now() }
+                        { id: 'acc_' + Date.now(), nickname: '我', avatar: '', avatarBg: '#3498db', badgeText: '我', badgeColor: '#3498db', createdAt: Date.now() },
+                        { id: 'acc_' + (Date.now() + 1), nickname: '小明', avatar: '', avatarBg: '#f5af19', badgeText: '好朋友', badgeColor: '#f39c12', createdAt: Date.now() }
                     );
                     saveAccounts();
                 }
@@ -3036,7 +3062,7 @@
                                 videos: [],
                                 timestamp: Date.now() - 3600000 * 24,
                                 likes: accounts.length >= 2 ? [accounts[0].id, accounts[1].id] : [accounts[0].id],
-                                comments: [{ id: 'c1', userId: accounts[1].id, text: '不错哦😁', timestamp: Date.now()}],
+                                comments: [{ id: 'c1', userId: accounts[1].id, text: '不错哦😁', timestamp: Date.now() }],
                                 pinned: false
                             }
                         ];
