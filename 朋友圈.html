@@ -2441,33 +2441,48 @@
                 return `<span class="user-badge" style="background:${account.badgeColor || '#888'};color:#fff;">${escapeHtml(account.badgeText)}</span>`;
             }
 
-            accounts = accounts.filter(a => a.id !== accId);
+            function confirmDeleteAccount(accId) {
+                const overlay = document.createElement('div');
+                overlay.className = 'modal-overlay';
+                overlay.innerHTML = `<div class="modal-dialog"><p>确定删除此账号吗？其动态将保留但显示为“未知用户”。</p><div class="btn-row"><button class="btn btn-cancel" id="cancelDel">取消</button><button class="btn btn-danger" id="confirmDel">删除</button></div></div>`;
+                document.body.appendChild(overlay);
+                overlay.querySelector('#cancelDel').onclick = () => overlay.remove();
+                overlay.querySelector('#confirmDel').onclick = () => {
+                    accounts = accounts.filter(a => a.id !== accId);
 
-// 如果删光所有 AI 账号，清除当前选中的 AI
-if (activeAIId === accId || !accounts.some(a => a.isAI)) {
-    activeAIId = null;
-    localStorage.removeItem(KEY_ACTIVE_AI);
-}
+                    // 如果删光所有 AI 账号，清除当前选中的 AI
+                    if (activeAIId === accId || !accounts.some(a => a.isAI)) {
+                        activeAIId = null;
+                        localStorage.removeItem(KEY_ACTIVE_AI);
+                    }
 
-// 确保当前账号始终为普通账号（不会被 AI 账号顶替）
-if (currentId === accId) {
-    let newAcc = accounts.find(a => !a.isAI);  // 优先选普通账号
-    if (!newAcc) {
-        // 没有普通账号了，创建一个默认的
-        newAcc = {
-            id: 'acc_' + Date.now(),
-            nickname: '我',
-            avatar: '',
-            avatarBg: '#3498db',
-            createdAt: Date.now()
-        };
-        accounts.push(newAcc);
-    }
-    currentId = newAcc.id;
-    localStorage.setItem(KEY_CUR, currentId);
-}
+                    // 确保当前账号始终为普通账号（不会被 AI 账号顶替）
+                    if (currentId === accId) {
+                        let newAcc = accounts.find(a => !a.isAI);  // 优先选普通账号
+                        if (!newAcc) {
+                            // 没有普通账号了，创建一个默认的
+                            newAcc = {
+                                id: 'acc_' + Date.now(),
+                                nickname: '我',
+                                avatar: '',
+                                avatarBg: '#3498db',
+                                createdAt: Date.now()
+                            };
+                            accounts.push(newAcc);
+                        }
+                        currentId = newAcc.id;
+                        localStorage.setItem(KEY_CUR, currentId);
+                    }
 
-saveAccounts();
+                    saveAccounts();
+
+                    overlay.remove();
+                    renderHeader();
+                    renderDropdown();
+                    renderTimeline(true);
+                    showToast('🗑️ 账号已删除');
+                };
+            }
 
             function renderPublishPreview() {
                 $publishPreview.innerHTML = publishFiles.map((mf, i) =>
