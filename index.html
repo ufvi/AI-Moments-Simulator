@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>朋友圈 - Moments</title>
+    <script src="https://cdn.bootcdn.net/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous">
+    </script>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="firebase.js"></script>
+    <script src="db.js"></script>
+    <script src="utils.js"></script>
+    <script src="markdown.js"></script>
+    <script src="state.js"></script>
+    <script src="publish.js"></script>
+    <script src="render.js"></script>
+    <script src="ai.js"></script>
+    <script src="modal.js"></script>
+    <script src="event.js"></script>
+</head>
+
+<body>
+    <div class="image-preview-tooltip" id="imagePreviewTooltip" style="display:none;">
+        <img src="" alt="预览" id="imagePreviewImg">
+    </div>
+    <div class="app-container">
+        <header class="header">
+            <div class="header-left" id="headerUserArea" title="点击切换普通账号">
+                <div id="headerAvatar"></div>
+                <span class="header-nickname" id="headerNickname">用户</span>
+                <span class="header-arrow">▾</span>
+            </div>
+            <div class="header-ai-area" id="headerAIArea" title="点击切换AI账号">
+                <span class="header-ai-icon">🤖</span>
+                <span class="header-ai-name" id="headerAIName">AI</span>
+                <span class="header-arrow">▾</span>
+            </div>
+            <div class="header-actions">
+                <button class="btn-icon" id="btnMoreMenu" title="更多">⋯</button>
+                <div class="settings-dropdown" id="settingsDropdown" style="display:none;">
+                    <div class="settings-dropdown-item" data-action="toggle-theme" id="settingsThemeItem">🌙 切换夜间模式
+                    </div>
+                    <div class="settings-dropdown-item" data-action="search">🔍 搜索</div>
+                    <div class="settings-dropdown-item" data-action="ai-settings">🤖 AI API KEY 配置</div>
+                    <div class="settings-dropdown-item" data-action="ai-post">✨ AI 发帖</div>
+                    <div class="settings-dropdown-item" data-action="export">📤 导出备份</div>
+                    <div class="settings-dropdown-item" data-action="import">📥 导入恢复</div>
+                    <div class="settings-dropdown-item" data-action="refresh">🔄 刷新</div>
+                    <div class="settings-dropdown-item" data-action="upload-cloud">☁️ 上传到云端</div>
+                    <div class="settings-dropdown-item" data-action="force-pull-cloud">⬇️ 强制从云端拉取</div>
+                    <div class="settings-dropdown-item" data-action="about">ℹ️ 关于</div>
+                </div>
+            </div>
+            <div class="search-bar" id="searchBar" style="display:none;">
+                <input type="text" id="searchInput" placeholder="搜索动态或发布者...">
+                <button class="btn-icon" id="btnClearSearch" title="关闭搜索">✕</button>
+            </div>
+        </header>
+        <div class="account-dropdown normal-dropdown" id="normalDropdown" style="display:none;"></div>
+        <div class="account-dropdown ai-dropdown" id="aiDropdown" style="display:none;"></div>
+        <!-- AI 思考中提示条 -->
+        <div class="ai-thinking-bar" id="aiThinkingBar">
+            <div class="thinking-avatar" id="thinkingAvatar">🤖</div>
+            <span id="thinkingText">AI 正在思考中<span class="thinking-dots"></span></span>
+        </div>
+        <div class="publish-area">
+            <textarea class="publish-input" id="publishText"
+                placeholder="分享你的生活点滴...（支持 Markdown：**加粗** *斜体* `代码` ~~删除~~ __下划线__ ||剧透||）"
+                maxlength="2000"></textarea>
+            <div class="publish-preview" id="publishPreview"></div>
+            <div class="publish-toolbar">
+                <button class="publish-tool-btn" id="btnAddImage"><span>🖼️</span> </button>
+                <button class="publish-tool-btn" id="btnAddVideo"><span>🎬</span> </button>
+                <button class="publish-tool-btn" id="btnAddEmoji"><span>😀</span> </button>
+                <!-- 图片质量 -->
+                <span class="quality-wrapper">
+                    <span class="publish-tool-btn" id="btnQuality" title="图片质量">⚙️</span>
+                    <div class="quality-selector" id="qualitySelector">
+                        <select id="imgQuality">
+                            <option value="1">原图</option>
+                            <option value="0.9" selected>高</option>
+                            <option value="0.7">中</option>
+                            <option value="0.5">低</option>
+                        </select>
+                    </div>
+                </span>
+                <button class="publish-tool-btn" id="btnSchedule" title="设定发布时间">🕒</button>
+                <input type="datetime-local" id="scheduleTime"
+                    style="display:none; padding:4px 8px; border-radius:8px; border:1px solid var(--border); font-size:12px; background:var(--input-bg); color:var(--text);">
+                <span class="publish-char-count" id="charCount">0/2000</span>
+                <button class="btn-cancel-edit" id="btnCancelEdit" style="display:none;">取消</button>
+                <button class="btn-publish" id="btnPublish" disabled>发布</button>
+            </div>
+            <input type="file" class="file-input-hidden" id="imageInput" accept="image/*" multiple>
+            <input type="file" class="file-input-hidden" id="videoInput" accept="video/*">
+        </div>
+        <div class="timeline" id="timeline"></div>
+        <div class="loader-indicator" id="loaderIndicator">加载更多...</div>
+        <button class="btn-back-to-top" id="btnBackToTop" title="回到顶部">⬆</button>
+    </div>
+
+    <div class="modal-overlay" id="imageModal" style="display:none;">
+        <div
+            style="position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
+            <button id="imageModalClose"
+                style="position:absolute; top:20px; right:30px; font-size:30px; background:none; border:none; color:#fff; cursor:pointer;">✕</button>
+            <button id="imageModalPrev"
+                style="position:absolute; left:20px; font-size:30px; background:none; border:none; color:#fff; cursor:pointer;">◀</button>
+            <img id="imageModalImg" src=""
+                style="max-width:90%; max-height:85vh; object-fit:contain; border-radius:4px;">
+            <button id="imageModalNext"
+                style="position:absolute; right:20px; font-size:30px; background:none; border:none; color:#fff; cursor:pointer;">▶</button>
+            <span id="imageModalCounter"
+                style="position:absolute; bottom:30px; color:#fff; font-size:14px; background:rgba(0,0,0,0.5); padding:2px 12px; border-radius:10px;"></span>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="aiSettingsModal" style="display:none;">
+        <div class="modal-dialog">
+            <h3>🤖 AI 评论设置</h3>
+            <label>baseURL</label>
+            <input type="text" id="aiEndpoint" placeholder="https://api.deepseek.com">
+            <label>API 密钥</label>
+            <input type="password" id="aiApiKey" placeholder="sk-...">
+            <label>模型名称</label>
+            <input type="text" id="aiModel" placeholder="deepseek-v4-pro">
+            <label>请求超时（秒）</label>
+            <input type="number" id="aiTimeout" value="15" min="1" max="60">
+            <div class="btn-row" style="margin-bottom:8px;">
+                <button class="btn btn-cancel" id="aiSettingsUploadCloud" style="flex:1;">☁️ 上传到云端</button>
+                <button class="btn btn-cancel" id="aiSettingsPullCloud" style="flex:1;">⬇️ 从云端拉取</button>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-cancel" id="aiSettingsCancel">取消</button>
+                <button class="btn btn-save" id="aiSettingsSave">保存</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
