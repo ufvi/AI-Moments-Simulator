@@ -107,7 +107,7 @@
                 }
             });
         });
-        
+
         // 按评论条数从高到低排序
         aiAccounts.sort((a, b) => (aiCommentCounts[b.id] || 0) - (aiCommentCounts[a.id] || 0));
 
@@ -269,11 +269,11 @@
         const curUser = window.App.getCurAcc();
         let curAvHtml;
         if (curUser?.avatarText) {
-            curAvHtml = `<div class="comment-input-avatar-placeholder" style="background:${curUser?.avatarBg || '#ccc'};font-size:${window.App.isEmoji(curUser.avatarText) ? '18px' : '12px'}">${window.App.escapeHtml(curUser.avatarText)}</div>`;
+            curAvHtml = `<div class="comment-input-avatar-placeholder" data-post-id="${post.id}" title="双击发送AI评论" style="background:${curUser?.avatarBg || '#ccc'};font-size:${window.App.isEmoji(curUser.avatarText) ? '18px' : '12px'}">${window.App.escapeHtml(curUser.avatarText)}</div>`;
         } else if (curUser?.avatar?.startsWith('data:')) {
-            curAvHtml = `<img class="comment-input-avatar" src="${curUser.avatar}">`;
+            curAvHtml = `<img class="comment-input-avatar" data-post-id="${post.id}" title="双击发送AI评论" src="${curUser.avatar}">`;
         } else {
-            curAvHtml = `<div class="comment-input-avatar-placeholder" style="background:${curUser?.avatarBg || '#ccc'}">${curUser?.nickname.charAt(0).toUpperCase() || '?'}</div>`;
+            curAvHtml = `<div class="comment-input-avatar-placeholder" data-post-id="${post.id}" title="双击发送AI评论" style="background:${curUser?.avatarBg || '#ccc'}">${curUser?.nickname.charAt(0).toUpperCase() || '?'}</div>`;
         }
 
         let ghostTagHtml = '';
@@ -288,7 +288,7 @@
         ${mediaHtml}
         <div class="post-actions"><button class="action-btn${isLiked ? ' liked' : ''}" data-action="like" data-post-id="${post.id}">${isLiked ? '❤️' : '🤍'} ${likeCnt || '点赞'}</button><button class="action-btn" data-action="focus-comment" data-post-id="${post.id}">💬 ${cmtCnt || '评论'}</button></div>
         ${likeCnt ? `<div class="post-likes-bar">❤️ ${post.likes.map(uid => window.App.getAcc(uid)?.nickname || '未知').slice(0, 8).join('、')}${likeCnt > 8 ? ' 等' + likeCnt + '人' : ''}</div>` : ''}${cmtsHtml}
-        <div class="comment-input-row">${curAvHtml}<textarea placeholder="写评论..." maxlength="500" id="commentInput-${post.id}" rows="1"></textarea><button class="comment-submit-btn ai-send-btn" data-action="submit-ai-comment" data-post-id="${post.id}">🤖发送</button>
+        <div class="comment-input-row">${curAvHtml}<textarea placeholder="写评论..." maxlength="500" id="commentInput-${post.id}" rows="1"></textarea>
 <button class="ai-generate-btn" data-action="ai-comment" data-post-id="${post.id}">🤖生成</button>
 <button class="comment-submit-btn" data-action="submit-comment" data-post-id="${post.id}">发送</button>`;
     }
@@ -334,7 +334,6 @@
         });
         $timeline.querySelectorAll('[data-action="submit-comment"]').forEach(b => b.onclick = () => window.App.submitComment(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="ai-comment"]').forEach(b => b.onclick = () => window.App.generateAIComment(b.dataset.postId));
-        $timeline.querySelectorAll('[data-action="submit-ai-comment"]').forEach(b => b.onclick = () => window.App.submitAIComment(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="copy-comment"]').forEach(b => b.onclick = (e) => {
             e.stopPropagation();
             window.App.copyComment(b.dataset.postId, b.dataset.commentId);
@@ -346,6 +345,15 @@
             };
         });
         $timeline.querySelectorAll('[data-action="toggle-comments"]').forEach(b => b.onclick = () => window.App.toggleCommentCollapse(b.dataset.postId));
+        // 双击评论头像 → AI 发送
+        $timeline.querySelectorAll('.comment-input-avatar-placeholder, .comment-input-avatar').forEach(avatar => {
+            avatar.ondblclick = () => {
+                const postId = avatar.dataset.postId;
+                if (postId && window.App.submitAIComment) {
+                    window.App.submitAIComment(postId);
+                }
+            };
+        });
     }
 
     function updateCard(id) {

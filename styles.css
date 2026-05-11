@@ -1798,3 +1798,64 @@ body {
     border-radius: 4px;
     display: block;
 }
+
+/* AI 评论弹窗 */
+.ai-comment-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.ai-comment-modal-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text);
+}
+
+.ai-comment-modal-badge {
+    font-size: 10px;
+    color: var(--ai-purple);
+    background: rgba(108, 92, 231, 0.1);
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-weight: 600;
+    border: 1px solid rgba(108, 92, 231, 0.25);
+}
+
+.ai-comment-modal-textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border);
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.6;
+    font-family: inherit;
+    outline: none;
+    resize: vertical;
+}
+
+.ai-comment-modal-textarea:focus {
+    border-color: var(--accent);
+}
+
+.ai-comment-modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 14px;
+    gap: 8px;
+}
+
+.ai-comment-modal-right {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.ai-comment-modal-send {
+    background: var(--ai-purple) !important;
+}

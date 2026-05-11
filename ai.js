@@ -30,6 +30,143 @@
         window.App.showToast('🤖 AI 已评论');
     }
 
+    function publishAIComment(postId, aiUserId, text) {
+        const post = window.App.posts.find(p => p.id === postId);
+        if (!post) return;
+        post.comments.push({ id: 'cmt_ai_' + Date.now(), userId: aiUserId, text, timestamp: Date.now() });
+        window.App.savePosts();
+        window.App.updateCard(postId);
+        window.App.showToast('🤖 AI 已评论');
+    }
+
+    function showAICommentModal(postId, aiAcc, reply) {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.display = 'flex';
+
+        const avatarHtml = aiAcc.avatar
+            ? `<img class="post-avatar" src="${window.App.escapeHtml(aiAcc.avatar)}" alt="" style="width:36px;height:36px;">`
+            : `<div class="post-avatar-placeholder" style="width:36px;height:36px;font-size:14px;background:${aiAcc.avatarBg || '#6c5ce7'};">${window.App.escapeHtml(aiAcc.avatarText || aiAcc.nickname?.charAt(0) || 'A')}</div>`;
+
+        overlay.innerHTML = `
+            <div class="modal-dialog ai-comment-modal" style="max-width:400px;">
+                <div class="ai-comment-modal-header">
+                    ${avatarHtml}
+                    <span class="ai-comment-modal-name">${window.App.escapeHtml(aiAcc.nickname)}</span>
+                    <span class="ai-comment-modal-badge">AI</span>
+                </div>
+                <textarea class="ai-comment-modal-textarea" id="aiCommentModalText-${postId}" maxlength="500">${window.App.escapeHtml(reply)}</textarea>
+                <div class="ai-comment-modal-actions">
+                    <button class="btn btn-cancel" id="aiCommentModalRegen-${postId}">🔄 重新生成</button>
+                    <div class="ai-comment-modal-right">
+                        <button class="btn btn-cancel" id="aiCommentModalCancel-${postId}">取消</button>
+                        <button class="btn btn-save ai-comment-modal-send" id="aiCommentModalSend-${postId}">发送</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        const textarea = overlay.querySelector('#aiCommentModalText-' + postId);
+        const regenBtn = overlay.querySelector('#aiCommentModalRegen-' + postId);
+        const cancelBtn = overlay.querySelector('#aiCommentModalCancel-' + postId);
+        const sendBtn = overlay.querySelector('#aiCommentModalSend-' + postId);
+
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+        const close = () => overlay.remove();
+
+        cancelBtn.onclick = close;
+        overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+
+        sendBtn.onclick = () => {
+            const text = textarea.value.trim();
+            if (!text) return;
+            close();
+            publishAIComment(postId, aiAcc.id, text);
+        };
+
+        regenBtn.onclick = async () => {
+            regenBtn.disabled = true;
+            regenBtn.textContent = '⏳ 生成中...';
+            let timeoutId;
+            try {
+                const post = window.App.posts.find(p => p.id === postId);
+                if (!post) { close(); return; }
+
+                const base = window.App.aiConfig.endpoint.replace(/\/+$/, '');
+                const isVolcengine = /volces\.com/i.test(window.App.aiConfig.endpoint);
+                const url = base + (isVolcengine ? '/responses' : '/chat/completions');
+                const controller = new AbortController();
+                timeoutId = setTimeout(() => controller.abort(), (window.App.aiConfig.timeout || 15) * 1000);
+
+                const aiName = aiAcc.nickname || 'AI助手';
+                const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
+                let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设。请用简短的口语为朋友圈生成评论。直接给出评论内容，不要在评论前加上名字。`;
+                const activeStyle = aiAcc.style || '';
+                if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
+
+                const author = window.App.getAcc(post.userId)?.nickname || '用户';
+                const timeDesc = window.App.formatTime(post.timestamp);
+                let contentDesc = post.userId === aiAcc.id
+                    ? `你（${author}）于 ${timeDesc} 自己发布了这条动态`
+                    : `${author} 于 ${timeDesc} 发布了动态`;
+                if (post.text) contentDesc += `：${post.text}`;
+
+                const messages = isVolcengine
+                    ? [{ role: 'user', content: [{ type: 'input_text', text: systemPrompt + '\n\n' + contentDesc }] }]
+                    : [{ role: 'system', content: systemPrompt }, { role: 'user', content: contentDesc }];
+
+                let body;
+                if (isVolcengine) {
+                    body = { model: window.App.aiConfig.model, input: messages, thinking: { type: 'disabled' } };
+                } else {
+                    body = { model: window.App.aiConfig.model, messages, max_tokens: 150, temperature: 0.8 };
+                    if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
+                }
+
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${window.App.aiConfig.apiKey || 'no-key'}` },
+                    body: JSON.stringify(body),
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                if (!res.ok) {
+                    let errMsg = `API ${res.status}`;
+                    try { const errData = await res.json(); errMsg = errData?.error?.message || errMsg; } catch (_) {}
+                    throw new Error(errMsg);
+                }
+                const data = await res.json();
+                const newReply = (isVolcengine
+                    ? data.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
+                    : data.choices?.[0]?.message?.content)?.trim();
+                if (!newReply) throw new Error('未生成有效回复');
+
+                textarea.value = newReply;
+                textarea.focus();
+                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            } catch (e) {
+                clearTimeout(timeoutId);
+                if (e.name === 'AbortError') window.App.showToast('⏰ AI 请求超时');
+                else window.App.showToast('❌ ' + e.message);
+            } finally {
+                regenBtn.disabled = false;
+                regenBtn.textContent = '🔄 重新生成';
+            }
+        };
+
+        textarea.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.isComposing) {
+                const isMobile = window.matchMedia('not (pointer: fine)').matches;
+                if (!isMobile) {
+                    e.preventDefault();
+                    sendBtn.click();
+                }
+            }
+        });
+    }
+
     async function generateAIComment(postId) {
         const post = window.App.posts.find(p => p.id === postId);
         if (!post) return;
@@ -156,7 +293,7 @@
             : ' 请以你的身份写一句评论。';
 
         // ===== 构造 user 消息（多模态 vs 纯文本） =====
-        // ★ 火山引擎：图片延后到最终 user 轮附加，避免出现在非末尾位置导致 400
+        // 火山引擎：图片延后到最终 user 轮附加，避免出现在非末尾位置导致 400
         if (imageUrls.length > 0 && !isVolcengine) {
             // 非火山：图片直接放第一条 user 消息
             const contentArray = [{ type: 'text', text: contentDesc }];
@@ -244,13 +381,7 @@
                 : data.choices?.[0]?.message?.content)?.trim();
             if (!reply) throw new Error('未生成有效回复');
 
-            const inp = document.getElementById('commentInput-' + postId);
-            if (inp) {
-                inp.value = reply;
-                inp.dataset.fromAI = 'true';
-                inp.focus();
-                window.App.showToast(window.App.randomAIMode ? `🎲 以 ${selectedAIAcc.nickname} 身份生成，可修改后点🤖发送` : '🤖 已生成，可修改后点🤖发送');
-            }
+            showAICommentModal(postId, selectedAIAcc, reply);
         } catch (e) {
             clearTimeout(timeoutId);
             if (e.name === 'AbortError') window.App.showToast('⏰ AI 请求超时');
@@ -755,12 +886,14 @@
         }
     }
 
-    // drafts: Array<{ text, label }> — label 显示在卡片顶部（如"小乖乖"或"版本 1"）
-    // onUse(draft): 直接发布回调；onEdit(draft): 编辑后发回调
-    function showDraftPickerModal(title, subtitle, drafts, onUse, onEdit) {
+    // drafts: Array<{ text, label, aiAcc? }> — label 显示在卡片顶部（如"小乖乖"或"版本 1"）
+    // onUse(draft): 直接发布回调；onEdit(draft): 编辑后发回调；onRegen(draft): 可选，重新生成回调，返回 Promise<string>
+    function showDraftPickerModal(title, subtitle, drafts, onUse, onEdit, onRegen) {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
         overlay.style.display = 'flex';
+
+        const hasRegen = typeof onRegen === 'function';
 
         const cardsHtml = drafts.map((draft, i) => `
             <div class="ai-draft-card" data-idx="${i}"
@@ -768,8 +901,10 @@
                        margin-bottom:10px;cursor:default;background:var(--card-bg);
                        font-size:14px;line-height:1.6;color:var(--text);">
                 <div style="font-size:11px;color:var(--text-light);margin-bottom:6px;font-weight:600;">${window.App.escapeHtml(draft.label)}</div>
-                <div>${window.App.escapeHtml(draft.text)}</div>
-                <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;">
+                <div class="ai-draft-text" data-idx="${i}">${window.App.escapeHtml(draft.text)}</div>
+                <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+                    ${hasRegen ? `<button class="btn btn-cancel draft-regen-btn" data-idx="${i}"
+                        style="padding:4px 12px;font-size:12px;">🔄 重新生成</button>` : ''}
                     <button class="btn btn-cancel draft-edit-btn" data-idx="${i}"
                         style="padding:4px 12px;font-size:12px;">✏️ 编辑后发</button>
                     <button class="btn btn-save draft-use-btn" data-idx="${i}"
@@ -805,6 +940,31 @@
                 onEdit(drafts[parseInt(btn.dataset.idx)]);
             };
         });
+
+        if (hasRegen) {
+            overlay.querySelectorAll('.draft-regen-btn').forEach(btn => {
+                btn.onclick = async (e) => {
+                    e.stopPropagation();
+                    const idx = parseInt(btn.dataset.idx);
+                    const draft = drafts[idx];
+                    btn.disabled = true;
+                    btn.textContent = '⏳';
+                    try {
+                        const newText = await onRegen(draft);
+                        if (newText) {
+                            drafts[idx].text = newText;
+                            const textEl = overlay.querySelector('.ai-draft-text[data-idx="' + idx + '"]');
+                            if (textEl) textEl.textContent = newText;
+                        }
+                    } catch (e) {
+                        window.App.showToast('❌ 重新生成失败');
+                    } finally {
+                        btn.disabled = false;
+                        btn.textContent = '🔄 重新生成';
+                    }
+                };
+            });
+        }
 
         overlay.querySelector('#draftPickerCancel').onclick = () => overlay.remove();
         overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
@@ -989,17 +1149,23 @@
             if (!drafts.length) throw new Error('所有版本均生成失败');
             if ($thinkingBar) $thinkingBar.classList.remove('visible');
 
-            if (drafts.length === 1) {
-                publishGhostPost(realUser, drafts[0].aiAcc, drafts[0].text, ghostInput);
-            } else {
-                showDraftPickerModal(
-                    '✍️ 选择一个代写版本',
-                    `以 <b>${window.App.escapeHtml(realUser.nickname)}</b> 身份发出，选你最喜欢的表达`,
-                    drafts,
-                    (d) => publishGhostPost(realUser, d.aiAcc, d.text, ghostInput),
-                    (d) => prefillGhostBox(realUser, d.aiAcc, d.text, ghostInput)
-                );
-            }
+            showDraftPickerModal(
+                '✍️ 选择一个代写版本',
+                `以 <b>${window.App.escapeHtml(realUser.nickname)}</b> 身份发出，选你最喜欢的表达`,
+                drafts,
+                (d) => publishGhostPost(realUser, d.aiAcc, d.text, ghostInput),
+                (d) => prefillGhostBox(realUser, d.aiAcc, d.text, ghostInput),
+                async (draft) => {
+                    const aiName = draft.aiAcc.nickname || 'AI';
+                    const basePrompt = draft.aiAcc.systemPrompt || '你是一个友善的朋友';
+                    const style = draft.aiAcc.style ? ` 风格要求：${draft.aiAcc.style}。` : '';
+                    const msgs = [
+                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化，不超过150字。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
+                        { role: 'user', content: `情境：${ghostInput}` }
+                    ];
+                    return await callAPI(msgs, 200);
+                }
+            );
         } catch (e) {
             if ($thinkingBar) $thinkingBar.classList.remove('visible');
             if (e.name === 'AbortError') window.App.showToast('⏰ AI 请求超时');
@@ -1098,11 +1264,11 @@
         '「{AI名}已将此次合作记入履历」',
         '「{AI名}表示下次代写要涨价，涨幅为一个赞」',
         '「{AI名}写完后自我感动了三秒，然后若无其事地交稿」',
-        '「此条朋友圈由 {AI名}荣誉出品，如有雷同纯属你抄它」',
+        '「此条朋友圈由{AI名}荣誉出品」',
         '「{AI名}的代写工作室今日开张，你是第一位客户」',
         '「{AI名}友情提示：代写内容仅供参考，情感真实度约 87%」',
         '「{AI名}用 0.003 度电完成了此次创作，请节约能源」',
-        '「原稿已丢进回收站，但 {AI名}说它还隐约记得」',
+        '「原稿已丢进回收站，但{AI名}说它还隐约记得」',
         '「{AI名}要求加入你的朋友圈常驻代笔，月薪一个笑脸」',
         '「{AI名}写这条的时候打了个嗝，但不影响质量」',
         '「你负责生活，{AI名}负责把生活变成文字」',
@@ -1118,7 +1284,7 @@
         '「{AI名}的字典里没有"敷衍"，但有"差不多得了"」',
         '「代写完成，{AI名}获得成就：人类嘴替 +1」',
         '「{AI名}表示下次想代写请提前预约，虽然它从不拒绝」',
-        '「这条朋友圈的版权归你，但文笔归 {AI名}」',
+        '「这条朋友圈的版权归你，但文笔归{AI名}」',
         '「{AI名}已清空写作缓存，本次服务不留痕迹」',
         '「{AI名}在你原稿基础上，添加了 30% 文学性和 70% 真诚」',
         '「你所说的每句话，{AI名}都认真听了，然后重新说了一遍」',
@@ -1156,6 +1322,8 @@
     window.App = window.App || {};
     window.App.ensureAIAccount = ensureAIAccount;
     window.App.submitAIComment = submitAIComment;
+    window.App.publishAIComment = publishAIComment;
+    window.App.showAICommentModal = showAICommentModal;
     window.App.generateAIComment = generateAIComment;
     window.App.openAISettings = openAISettings;
     window.App.openAIPostModal = openAIPostModal;
