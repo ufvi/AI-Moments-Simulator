@@ -1,60 +1,117 @@
-# Moments · 朋友圈模拟器
+# Moments-Simulator
 
-朋友圈模拟器，支持云同步、多账号切换、多媒体动态发布、AI 评论生成、深色模式、ZIP 备份导入导出等功能。所有数据存储在浏览器本地（IndexedDB + localStorage），也可以云实时同步。
+一个在浏览器中模拟朋友圈的趣味项目。你可以创建多个虚拟账号（包括真人角色和 AI 角色），发布动态、互评、点赞，还能让 AI 自动为你生成评论、撰写帖子，甚至以不同人设替你“代写”心声。
 
-## ✨ 功能亮点
+支持多账号、AI 自动评论/发帖/代写、Markdown 图文视频动态、云端同步与多空间隔离。
 
-- **多账号系统**  
-  创建多个普通账号或 AI 人设账号，每个账号可自定义头像、昵称、评论徽章。
-- **动态发布与编辑**  
-  支持文字（Markdown）、图片（最多 9 张，可选压缩质量）、视频。可设置定时发布时间。
-- **🤖 AI 评论、AI发帖**  
-  配置 OpenAI 兼容 API（如 DeepSeek），让 AI 人设自动生成评论或帖子。可手动修改后发送。  
-- **Markdown 渲染**  
-  支持加粗、斜体、代码、删除线、下划线、链接、剧透块等。   
-- **深色模式**  
-  一键切换，自动跟随系统偏好。
-- **搜索功能**  
-  按动态内容或发布者搜索（过滤 Markdown 标记和空格）。
-- **📦 数据管理与备份**  
-  所有媒体文件及结构化数据存储在 IndexedDB 中。支持导出为 ZIP 文件（含所有图片/视频和 Json 元数据），并可从 ZIP 或 JSON 导入恢复。  
-  导出文件无需服务器，可通过浏览器直接下载或使用 Web Share API 分享。
-- **懒加载**  
-  媒体文件仅在进入视口时加载，提升性能。
-- **其他**  
-  置顶动态、回到顶部、简洁的手机端适配等。
+🌐 **在线体验**：[https://moments-simulator.pages.dev](https://moments-simulator.pages.dev)
 
-## 🛠️ 技术栈
+## ✨ 主要功能
 
-- 原生 HTML/CSS/JavaScript（无框架依赖）
-- [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) 存储媒体文件与核心数据
-- [JSZip](https://stuk.github.io/jszip/) 生成/解析 ZIP 备份
-- Markdown 解析（内联实现）
-- Intersection Observer 实现媒体懒加载
+- **多账号管理**：创建多个真人角色和 AI 人设，一键切换身份，每个角色拥有独立昵称、头像、徽章和活跃度。
+- **丰富的动态内容**：支持 Markdown 语法（加粗、斜体、删除线、链接、图片、分割线、剧透等），图文、视频上传与压缩。
+- **互动功能**：点赞、评论（支持换行）、评论折叠展开、动态置顶/搜索/编辑/删除。
+- **AI 智能参与**：
+  - **AI 评论**：选择一个 AI 身份，一键生成符合人设的评论；支持随机 AI 模式，按活跃度权重随机抽取 AI 账号进行评论。
+  - **AI 发帖**：AI 自动生成情境内并写出朋友圈动态，可并发产生多条候选，挑选最满意的一条发布。
+  - **AI 代写（Ghost Writer）**：由你提供经历，多个 AI 人设各自代写，最终以你的账号身份发出，并保留代笔信息。
+- **数据持久化与同步**：
+  - 本地基于 IndexedDB 和 localStorage，离线也能用。
+  - 可选启用 **Firebase Realtime Database** 进行云端数据同步。
+  - 图片/视频存储在 **Cloudflare R2**，通过 Pages Functions 代理访问。
+- **多空间隔离**：通过 URL 参数 `?ns=你的空间名` 指定命名空间，不同空间数据完全隔离。
+- **深色模式、搜索、导出/导入备份**（支持包含多媒体的 zip 包）。
+- **移动端适配**，可安装为 PWA 使用。
 
-## 🚀 快速开始
+## 🚀 立即体验
 
-### 直接运行
-1. 克隆仓库或下载文件。
-2. 用浏览器打开 `index.html`（推荐 Chrome/Edge/Firefox）。
-3. 开始创建账号、发布动态！
+线上地址：**[https://moments-simulator.pages.dev/](https://moments-simulator.pages.dev/)**
 
-### 配置 AI 评论（可选）
-1. 点击右上角 🤖 按钮，进入 AI 设置。
-2. 填写你的 API 信息（兼容 OpenAI 接口即可，例如 DeepSeek）：
-   - **API 端点**：如 `https://api.deepseek.com`
-   - **API 密钥**：你的 API Key
-   - **模型名称**：如 `deepseek-v4-flash`
-   - 可自定义系统提示词与评论风格。
-3. 保存后，在动态评论区点击 `🤖生成`，AI 将根据动态内容自动撰写评论。
+在浏览器中打开即可使用，无需注册。想要多个独立的朋友圈，只需修改 `?ns=` 参数，例如：
 
-### 备份与恢复
-- 点击顶部 💾 按钮，选择导出备份，将下载一个包含所有账户、动态和媒体文件的 ZIP 包。
-- 在新设备或清空数据后，通过 💾 → 导入恢复上传该 ZIP 即可还原全部内容。
+```
+https://moments-simulator.pages.dev/?ns=我的小圈子
+https://moments-simulator.pages.dev/?ns=工作摸鱼群
+```
 
-## ⚠️ 注意事项
+不同 `ns` 之间的数据完全隔离，互不干扰。
 
-- AI 评论需要你自行提供可用的 API 端点与密钥，本应用不会收集任何数据。
-- 浏览器必须支持 IndexedDB 和 ES6+ 语法。
-- 由于浏览器安全策略，Web Share API 可能存在兼容性问题，若无法分享则会自动下载。
+## 🛠️ 自部署指南
+
+### 1. 克隆仓库
+
+```bash
+git clone https://github.com/ufvi/Moments-Simulator.git
+cd Moments-Simulator
+```
+
+### 2. 配置云同步（可选）
+
+项目默认依赖 **Firebase Realtime Database** 进行云端数据同步，以及 **Cloudflare R2** 存储图片。如果你想拥有自己的独立后端，请按以下步骤配置：
+
+#### 2.1 Firebase 配置
+
+1. 前往 [Firebase 控制台](https://console.firebase.google.com/) 创建一个新项目（或使用已有项目）。
+2. 在 **项目设置 → 常规 → 您的应用** 中添加一个 Web 应用，复制生成的 `firebaseConfig` 对象。
+3. 打开项目中的 `firebase-config.js` 文件，将内容替换为你的配置，**不要将该文件提交到公开仓库**：
+
+4. 在 Firebase 控制台启用 **Realtime Database**，并根据需要设置安全规则（测试阶段可使用公共读写规则：`{".read":true,".write":true}`）。
+
+#### 2.2 Cloudflare R2 与 Pages Functions 配置
+
+项目通过 Pages Functions 实现图片上传/下载 API，需要绑定两个资源：**KV** 和 **R2**。
+
+1. 在 Cloudflare 后台创建 **KV namespace** 和 **R2 bucket**（名称随意，例如 `MOMENTS_KV` 和 `MOMENTS_R2`）。
+2. 在 **Pages 项目设置 → Functions → 绑定** 中添加：
+   - 类型 KV → 变量名 `MOMENTS_KV`
+   - 类型 R2 → 变量名 `MOMENTS_R2`
+3. 部署 Functions (`functions/api/[[path]].js`) 后，API 即自动生效。如果你没有使用 Cloudflare Pages，可以单独部署 Worker（`worker.js`），并将 `cloudflare.js` 中的 `WORKER_BASE_URL` 修改为你的 Worker 地址。
+
+完成以上配置并部署后，你自己的云同步和图片存储就可以使用了。
+
+### 3. 部署到 Cloudflare Pages
+
+部署到 Cloudflare Pages，可以获得专属于你的链接，使用任意设备随时访问。
+
+1. 将项目推送到 GitHub/GitLab 仓库。
+2. 在 Cloudflare Pages 中创建新项目，关联仓库。
+3. 构建设置保持默认，无需构建命令（纯静态 + Functions）。
+4. 在项目设置中绑定上面提到的 KV 和 R2（变量名必须为 `MOMENTS_KV` 和 `MOMENTS_R2`）。
+5. 部署完成后，你的朋友圈模拟器就上线了。
+
+## 📦 技术栈
+
+- 前端：原生 JavaScript + CSS + HTML，无框架依赖
+- 数据存储：IndexedDB (本地) + Firebase Realtime Database (云端)
+- 文件存储：Cloudflare R2
+- 后端：Cloudflare Pages Functions / Worker
+- AI API：兼容 OpenAI 接口格式（支持 DeepSeek、火山引擎等任何兼容模型）
+- 其他：JSZip 用于备份打包，Intersection Observer 实现媒体懒加载
+
+## 🤖 AI 使用说明
+
+1. 在“设置 → AI API KEY 配置”中填入你的 API 地址、密钥和模型（支持所有 OpenAI 兼容接口，包括 DeepSeek、火山引擎等）。
+2. 添加 AI 账号，可为其设置系统提示词、评论风格和活跃度。
+3. 发帖或评论时，点击 🧠 生成按钮即可让 AI 以选中的人设参与讨论。
+4. 开启“随机 AI 模式”后，每次生成评论都会按活跃度随机抽取一位 AI 人设，让你的朋友圈更热闹。
+5. 使用“AI 发帖”：输入主题或让 AI 生成情境，可选择生成多条候选并挑选发布。
+6. 使用“AI 代写”：描述你的经历，多位 AI 人设同时为你润色，选出最喜欢的表达以你的身份发出。
+
+## 📝 本地开发
+
+直接用任意静态文件服务器运行项目根目录即可：
+
+```bash
+npx serve .
+```
+
+或使用 Live Server 等工具。修改代码后刷新浏览器即可看到效果。注意，云同步功能需要部署到 Cloudflare Pages 或配置 Worker 后才能完全工作。
+
+## 📄 许可
+
+MIT License
+
+---
+
+如果你喜欢这个项目，欢迎给个 ⭐️ Star，也欢迎提交 PR 或 Issue 一起完善！
 
