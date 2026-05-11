@@ -117,6 +117,16 @@ body {
     position: relative;
 }
 
+.namespace-banner {
+    background: var(--accent);
+    color: #fff;
+    text-align: center;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
 .header {
     background: var(--header-bg);
     padding: 10px 14px;
@@ -854,6 +864,28 @@ body {
     background: var(--input-bg);
 }
 
+.post-image-wrapper::before {
+    content: "🖼️loading";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 28px;
+    color: #adb5bd;
+    opacity: 0.7;
+    z-index: 1;               /* 确保位于图片下层（图片会盖住它） */
+}
+
+.post-image-wrapper.loaded::before {
+    content: none;
+}
+
+.post-image-wrapper img {
+    position: relative;
+    z-index: 2;
+    background-color: transparent;
+}
+
 /* 多图（3格/2格）保持正方形裁剪，单图自适应比例 */
 .post-images-grid:not(.single-col) .post-image-wrapper {
     aspect-ratio: 1;
@@ -1123,7 +1155,8 @@ body {
     flex-shrink: 0;
 }
 
-.comment-input-row input {
+.comment-input-row input,
+.comment-input-row textarea {
     flex: 1;
     border: 1px solid var(--input-border);
     border-radius: 14px;
@@ -1133,6 +1166,14 @@ body {
     background: var(--input-bg);
     color: var(--text);
     min-width: 0;
+    font-family: inherit;
+}
+
+.comment-input-row textarea {
+    resize: none;
+    overflow: hidden;
+    min-height: 32px;
+    line-height: 1.4;
 }
 
 .comment-submit-btn,
@@ -1193,7 +1234,7 @@ body {
     width: 100%;
     height: 100%;
     background: var(--overlay-bg);
-    z-index: 500;
+    z-index: 9999;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1210,6 +1251,20 @@ body {
     max-height: 85vh;
     overflow-y: auto;
     color: var(--text);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.modal-dialog::-webkit-scrollbar {
+    width: 4px;
+}
+.modal-dialog::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 14px;
+}
+.modal-dialog::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
 }
 
 .modal-dialog h3 {
@@ -1235,7 +1290,7 @@ body {
     font-size: 13px;
     font-family: inherit;
     outline: none;
-    resize: vertical;
+    resize: none;
     background: var(--input-bg);
     color: var(--text);
 }

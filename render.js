@@ -276,13 +276,19 @@
             curAvHtml = `<div class="comment-input-avatar-placeholder" style="background:${curUser?.avatarBg || '#ccc'}">${curUser?.nickname.charAt(0).toUpperCase() || '?'}</div>`;
         }
 
+        let ghostTagHtml = '';
+        if (post.ghostWriter) {
+            const ghostAcc = window.App.getAcc(post.ghostWriter);
+            ghostTagHtml = `<span style="font-size:11px;color:var(--text-light);margin-left:6px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:1px 7px;cursor:pointer;" onclick="window.App.showGhostInfo('${post.id}')">✍️ ${window.App.escapeHtml(ghostAcc?.nickname || 'AI')}代笔</span>`;
+        }
+
         return `<div class="post-card${post.pinned ? ' pinned-card' : ''}" id="post-${post.id}">${post.pinned ? '<div class="pin-badge">📌</div>' : ''}
-        <div class="post-header">${avatarHtml}<div class="post-user-info"><div class="post-nickname">${window.App.escapeHtml(author.nickname)}</div><div class="post-time">${window.App.formatTime(post.timestamp)}</div></div><button class="post-menu-btn" data-action="toggle-menu" data-post-id="${post.id}">⋯</button><div class="post-menu-dropdown" id="postMenu-${post.id}" style="display:none;"><button data-action="edit-post" data-post-id="${post.id}">✏️ 编辑</button><button data-action="toggle-pin" data-post-id="${post.id}">${post.pinned ? '取消置顶' : '📌 置顶'}</button><button data-action="share-post" data-post-id="${post.id}">📤 分享这条</button><button data-action="copy-post" data-post-id="${post.id}">📋 复制</button><button data-action="delete-post" data-post-id="${post.id}" class="danger">🗑️ 删除</button></div></div>
+        <div class="post-header">${avatarHtml}<div class="post-user-info"><div class="post-nickname">${window.App.escapeHtml(author.nickname)}</div><div class="post-time">${window.App.formatTime(post.timestamp)}</div>${ghostTagHtml}</div><button class="post-menu-btn" data-action="toggle-menu" data-post-id="${post.id}">⋯</button><div class="post-menu-dropdown" id="postMenu-${post.id}" style="display:none;"><button data-action="edit-post" data-post-id="${post.id}">✏️ 编辑</button><button data-action="toggle-pin" data-post-id="${post.id}">${post.pinned ? '取消置顶' : '📌 置顶'}</button><button data-action="share-post" data-post-id="${post.id}">📤 分享这条</button><button data-action="copy-post" data-post-id="${post.id}">📋 复制</button><button data-action="delete-post" data-post-id="${post.id}" class="danger">🗑️ 删除</button></div></div>
         ${post.text ? `<div class="post-text">${window.App.parseMarkdown(post.text)}</div>` : ''}
         ${mediaHtml}
         <div class="post-actions"><button class="action-btn${isLiked ? ' liked' : ''}" data-action="like" data-post-id="${post.id}">${isLiked ? '❤️' : '🤍'} ${likeCnt || '点赞'}</button><button class="action-btn" data-action="focus-comment" data-post-id="${post.id}">💬 ${cmtCnt || '评论'}</button></div>
         ${likeCnt ? `<div class="post-likes-bar">❤️ ${post.likes.map(uid => window.App.getAcc(uid)?.nickname || '未知').slice(0, 8).join('、')}${likeCnt > 8 ? ' 等' + likeCnt + '人' : ''}</div>` : ''}${cmtsHtml}
-        <div class="comment-input-row">${curAvHtml}<input type="text" placeholder="写评论..." maxlength="500" id="commentInput-${post.id}"><button class="comment-submit-btn ai-send-btn" data-action="submit-ai-comment" data-post-id="${post.id}">🤖发送</button>
+        <div class="comment-input-row">${curAvHtml}<textarea placeholder="写评论..." maxlength="500" id="commentInput-${post.id}" rows="1"></textarea><button class="comment-submit-btn ai-send-btn" data-action="submit-ai-comment" data-post-id="${post.id}">🤖发送</button>
 <button class="ai-generate-btn" data-action="ai-comment" data-post-id="${post.id}">🤖生成</button>
 <button class="comment-submit-btn" data-action="submit-comment" data-post-id="${post.id}">发送</button>`;
     }

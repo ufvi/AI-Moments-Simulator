@@ -8,7 +8,7 @@
     <script src="https://cdn.bootcdn.net/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous">
     </script>
     <link rel="stylesheet" href="styles.css">
-    <script type="module" src="firebase.js"></script>
+    <script type="module" src="cloudflare.js"></script>
     <script src="db.js"></script>
     <script src="utils.js"></script>
     <script src="markdown.js"></script>
@@ -24,7 +24,9 @@
     <div class="image-preview-tooltip" id="imagePreviewTooltip" style="display:none;">
         <img src="" alt="预览" id="imagePreviewImg">
     </div>
+    <script src="https://fastly.jsdelivr.net/gh/stevenjoezhang/live2d-widget/autoload.js"></script>
     <div class="app-container">
+        <div class="namespace-banner" id="namespaceBanner" style="display:none;"></div>
         <header class="header">
             <div class="header-left" id="headerUserArea" title="点击切换普通账号">
                 <div id="headerAvatar"></div>
@@ -44,6 +46,7 @@
                     <div class="settings-dropdown-item" data-action="search">🔍 搜索</div>
                     <div class="settings-dropdown-item" data-action="ai-settings">🤖 AI API KEY 配置</div>
                     <div class="settings-dropdown-item" data-action="ai-post">✨ AI 发帖</div>
+                    <div class="settings-dropdown-item" data-action="ghost-writer">✍️ 代写</div>
                     <div class="settings-dropdown-item" data-action="export">📤 导出备份</div>
                     <div class="settings-dropdown-item" data-action="import">📥 导入恢复</div>
                     <div class="settings-dropdown-item" data-action="refresh">🔄 刷新</div>
@@ -116,27 +119,6 @@
         </div>
     </div>
 
-    <div class="modal-overlay" id="aiSettingsModal" style="display:none;">
-        <div class="modal-dialog">
-            <h3>🤖 AI 评论设置</h3>
-            <label>baseURL</label>
-            <input type="text" id="aiEndpoint" placeholder="https://api.deepseek.com">
-            <label>API 密钥</label>
-            <input type="password" id="aiApiKey" placeholder="sk-...">
-            <label>模型名称</label>
-            <input type="text" id="aiModel" placeholder="deepseek-v4-pro">
-            <label>请求超时（秒）</label>
-            <input type="number" id="aiTimeout" value="15" min="1" max="60">
-            <div class="btn-row" style="margin-bottom:8px;">
-                <button class="btn btn-cancel" id="aiSettingsUploadCloud" style="flex:1;">☁️ 上传到云端</button>
-                <button class="btn btn-cancel" id="aiSettingsPullCloud" style="flex:1;">⬇️ 从云端拉取</button>
-            </div>
-            <div class="btn-row">
-                <button class="btn btn-cancel" id="aiSettingsCancel">取消</button>
-                <button class="btn btn-save" id="aiSettingsSave">保存</button>
-            </div>
-        </div>
-    </div>
 </body>
 
 </html>

@@ -2,9 +2,6 @@
     const $ = (s) => document.querySelector(s);
 
     function ensureAIAccount() {
-        // 兼容旧版单一 AI 账号（id='acc_ai'），为其打上 isAI 标记
-        window.App.accounts.filter(a => a.id === 'acc_ai').forEach(a => { a.isAI = true; });
-
         // 确保 activeAIId 指向一个仍然存在的 AI 账号，但不自动创建新账号
         if (window.App.activeAIId && !window.App.accounts.find(a => a.id === window.App.activeAIId && a.isAI)) {
             window.App.activeAIId = window.App.accounts.find(a => a.isAI)?.id || null;
@@ -95,14 +92,14 @@
         const timeDesc = window.App.formatTime(post.timestamp);
 
         // ===== 检测模型是否支持视觉（多模态） =====
-        const modelSupportsVision = /vision|vl|claude|gemini|gpt-4o/i.test(window.App.aiConfig.model);
+        const modelSupportsVision = window.App.aiConfig.vision === true;
 
         // ===== 收集图片URL（仅当模型支持视觉时） =====
         let imageUrls = [];
         if (modelSupportsVision && (post.images?.length || /!\[[^\]]*\]\(/.test(post.text))) {
             const collected = [];
 
-            // 1. 直接上传的图片（从images数组获取Firebase Storage URL）
+            // 1. 直接上传的图片（从images数组获取Cloudflare Storage URL）
             if (post.images && post.images.length && window._fbGetMediaUrl) {
                 for (const mid of post.images.slice(0, 4)) { // 最多4张
                     try {
@@ -137,6 +134,7 @@
         const activeStyle = selectedAIAcc?.style || '';
         if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
 
+        const isVolcengine = /volces\.com/i.test(window.App.aiConfig.endpoint);
         const messages = [{ role: 'system', content: systemPrompt }];
 
         // ===== 2. 构建用户消息（描述当前帖子） =====
@@ -158,40 +156,55 @@
             : ' 请以你的身份写一句评论。';
 
         // ===== 构造 user 消息（多模态 vs 纯文本） =====
-        if (imageUrls.length > 0) {
-            // 视觉模式：content 为数组
+        // ★ 火山引擎：图片延后到最终 user 轮附加，避免出现在非末尾位置导致 400
+        if (imageUrls.length > 0 && !isVolcengine) {
+            // 非火山：图片直接放第一条 user 消息
             const contentArray = [{ type: 'text', text: contentDesc }];
-            imageUrls.forEach(url => {
-                contentArray.push({ type: 'image_url', image_url: { url } });
-            });
+            imageUrls.forEach(url => contentArray.push({ type: 'image_url', image_url: { url } }));
             messages.push({ role: 'user', content: contentArray });
         } else {
-            // 纯文本模式
-            messages.push({ role: 'user', content: contentDesc });
+            // 火山 or 纯文本：先不带图片，图片由后面逻辑决定放在哪条 user 消息
+            const text = isVolcengine ? systemPrompt + '\n\n' + contentDesc : contentDesc;
+            messages.push({
+                role: 'user',
+                content: isVolcengine ? [{ type: 'input_text', text }] : text
+            });
         }
 
-        // ===== 3. 安全地添加历史对话 =====
+        // ===== 3. 将历史评论作为上下文描述注入最后一条 user 消息（始终单轮，无多轮风险）=====
         if (post.comments.length) {
             const recent = post.comments.slice(-15);
             const myComments = recent.filter(c => c.userId === selectedAIId);
             const otherComments = recent.filter(c => c.userId !== selectedAIId);
-
+            const extraLines = [];
             if (otherComments.length) {
-                let othersText = otherComments
+                const othersText = otherComments
                     .map(c => `${window.App.getAcc(c.userId)?.nickname || '用户'}：${c.text}`)
                     .join('\n');
-                messages.push({
-                    role: 'user',
-                    content: `已有的其他用户评论：\n${othersText}`
-                });
+                extraLines.push(`已有的其他用户评论：\n${othersText}`);
             }
-
             if (myComments.length) {
-                let myText = myComments.map(c => c.text).join('\n');
-                messages.push({
-                    role: 'assistant',
-                    content: myText
-                });
+                const myText = myComments.map(c => c.text).join('、');
+                extraLines.push(`你已经评论过："${myText}"，请生成一条内容不同的新评论。`);
+            }
+            if (extraLines.length) {
+                const extra = '\n\n' + extraLines.join('\n');
+                const lastMsg = messages[messages.length - 1];
+                if (lastMsg.role === 'user') {
+                    if (Array.isArray(lastMsg.content)) {
+                        lastMsg.content.push({ type: isVolcengine ? 'input_text' : 'text', text: extra });
+                    } else {
+                        lastMsg.content += extra;
+                    }
+                }
+            }
+        }
+
+        // ===== ★ 火山引擎：图片附加到最后一条 user 消息 =====
+        if (isVolcengine && imageUrls.length > 0) {
+            const lastUserMsg = messages.slice().reverse().find(m => m.role === 'user');
+            if (lastUserMsg && Array.isArray(lastUserMsg.content)) {
+                imageUrls.forEach(url => lastUserMsg.content.push({ type: 'input_image', image_url: url }));
             }
         }
 
@@ -199,10 +212,19 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), (window.App.aiConfig.timeout || 15) * 1000);
         try {
-            const body = { model: window.App.aiConfig.model, messages, max_tokens: 150, temperature: 0.8 };
-            if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
-            const base = window.App.aiConfig.endpoint.replace(/\/ +$/, '');
-            const url = base + '/chat/completions';
+            const base = window.App.aiConfig.endpoint.replace(/\/+$/, '');
+            let body, url;
+            if (isVolcengine) {
+                // 火山引擎 responses API：system prompt 已塞入第一条 user 消息，跳过 system 消息
+                url = base + '/responses';
+                const input = messages.filter(m => m.role !== 'system').map(m => { const item = { role: m.role, content: m.content }; if (m.status) item.status = m.status; return item; });
+                body = { model: window.App.aiConfig.model, input, thinking: { type: 'disabled' } };
+            } else {
+                // OpenAI-compatible chat/completions
+                url = base + '/chat/completions';
+                body = { model: window.App.aiConfig.model, messages, max_tokens: 150, temperature: 0.8 };
+                if (window.App.aiConfig.model?.includes('deepseek-v4') && imageUrls.length === 0) body.thinking = { type: 'disabled' };
+            }
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${window.App.aiConfig.apiKey || 'no-key'}` },
@@ -210,9 +232,16 @@
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
-            if (!res.ok) throw new Error(`API ${res.status}`);
+            if (!res.ok) {
+                let errMsg = `API ${res.status}`;
+                try { const errData = await res.json(); errMsg = errData?.error?.message || errMsg; } catch (_) {}
+                throw new Error(errMsg);
+            }
             const data = await res.json();
-            const reply = data.choices?.[0]?.message?.content?.trim();
+            // 火山引擎 responses API 返回 output（含 reasoning + message），OpenAI 返回 choices
+            const reply = (isVolcengine
+                ? data.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
+                : data.choices?.[0]?.message?.content)?.trim();
             if (!reply) throw new Error('未生成有效回复');
 
             const inp = document.getElementById('commentInput-' + postId);
@@ -240,11 +269,176 @@
     }
 
     function openAISettings() {
-        $('#aiSettingsModal').style.display = 'flex';
-        $('#aiEndpoint').value = window.App.aiConfig.endpoint || '';
-        $('#aiApiKey').value = window.App.aiConfig.apiKey || '';
-        $('#aiModel').value = window.App.aiConfig.model || '';
-        $('#aiTimeout').value = window.App.aiConfig.timeout || 15;
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.display = 'flex';
+
+        function saveFormToPreset(pid) {
+            var sel = overlay.querySelector('#presetSelector');
+            if (!pid) pid = sel ? sel.value : null;
+            if (!pid) return;
+            var p = window.App.aiPresets.find(function (p) { return p.id === pid; });
+            if (!p) return;
+            p.name = overlay.querySelector('#presetName').value.trim() || '未命名';
+            p.endpoint = overlay.querySelector('#aiEndpoint').value.trim();
+            p.apiKey = overlay.querySelector('#aiApiKey').value.trim();
+            p.model = overlay.querySelector('#aiModel').value.trim();
+            p.timeout = parseInt(overlay.querySelector('#aiTimeout').value) || 30;
+            p.vision = overlay.querySelector('#aiVision').checked;
+        }
+
+        function loadPresetToForm(pid) {
+            var p = window.App.aiPresets.find(function (p) { return p.id === pid; });
+            if (!p) return;
+            overlay.querySelector('#presetName').value = p.name || '';
+            overlay.querySelector('#aiEndpoint').value = p.endpoint || '';
+            overlay.querySelector('#aiApiKey').value = p.apiKey || '';
+            overlay.querySelector('#aiModel').value = p.model || '';
+            overlay.querySelector('#aiTimeout').value = p.timeout || 30;
+            overlay.querySelector('#aiVision').checked = p.vision !== false;
+        }
+
+        function refreshSelector() {
+            var sel = overlay.querySelector('#presetSelector');
+            if (!sel) return;
+            sel.innerHTML = window.App.aiPresets.map(function (p) {
+                return '<option value="' + p.id + '">' + window.App.escapeHtml(p.name || '未命名') + '</option>';
+            }).join('');
+            sel.value = window.App.activePresetId;
+            var delBtn = overlay.querySelector('#deletePresetBtn');
+            if (delBtn) delBtn.style.display = window.App.aiPresets.length > 1 ? '' : 'none';
+        }
+
+        overlay.innerHTML = '<div class="modal-dialog" style="max-width:380px;">' +
+            '<h3>🤖 AI API 配置</h3>' +
+            '<label>方案</label>' +
+            '<div style="display:flex;gap:6px;margin-top:4px;">' +
+            '<select id="presetSelector" style="flex:1; border-radius:8px;">' +
+            window.App.aiPresets.map(function (p) { return '<option value="' + p.id + '">' + window.App.escapeHtml(p.name || '未命名') + '</option>'; }).join('') +
+            '</select>' +
+            '<button class="btn btn-danger" id="deletePresetBtn" title="删除当前方案" style="flex-shrink:0;' + (window.App.aiPresets.length <= 1 ? 'display:none;' : '') + '">🗑️</button>' +
+            '</div>' +
+            '<button class="btn btn-cancel" id="newPresetBtn" style="width:100%;margin-top:6px;text-align:center;">+ 新建方案</button>' +
+            '<label style="margin-top:10px;">方案名称</label>' +
+            '<input type="text" id="presetName" value="' + window.App.escapeHtml(window.App.aiConfig.name || '') + '" maxlength="20" placeholder="例如：DeepSeek、OpenAI" style="margin-top:4px;">' +
+            '<label>baseURL</label>' +
+            '<input type="text" id="aiEndpoint" value="' + window.App.escapeHtml(window.App.aiConfig.endpoint || '') + '" placeholder="https://api.deepseek.com" style="margin-top:4px;">' +
+            '<label>API 密钥</label>' +
+            '<input type="password" id="aiApiKey" value="' + window.App.escapeHtml(window.App.aiConfig.apiKey || '') + '" placeholder="sk-..." style="margin-top:4px;">' +
+            '<label>模型名称</label>' +
+            '<input type="text" id="aiModel" value="' + window.App.escapeHtml(window.App.aiConfig.model || '') + '" placeholder="deepseek-v4-pro" style="margin-top:4px;">' +
+            '<label>请求超时（秒）</label>' +
+            '<input type="number" id="aiTimeout" value="' + (window.App.aiConfig.timeout || 30) + '" min="1" max="120" style="margin-top:4px;">' +
+            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;">' +
+            '<input type="checkbox" id="aiVision"' + (window.App.aiConfig.vision !== false ? ' checked' : '') + '> 支持图片（视觉/多模态）' +
+            '</label>' +
+            '<div class="btn-row" style="margin-bottom:8px;">' +
+            '<button class="btn btn-cancel" id="aiCloudUpload" style="flex:1;">☁️ 上传到云端</button>' +
+            '<button class="btn btn-cancel" id="aiCloudPull" style="flex:1;">⬇️ 从云端拉取</button>' +
+            '</div>' +
+            '<div class="btn-row">' +
+            '<button class="btn btn-cancel" id="aiSettingsCancel">取消</button>' +
+            '<button class="btn btn-save" id="aiSettingsSave">保存</button>' +
+            '</div></div>';
+        document.body.appendChild(overlay);
+
+        var selector = overlay.querySelector('#presetSelector');
+        // Bug3 修复：确保 selector 显示值与 activePresetId 一致
+        selector.value = window.App.activePresetId;
+
+        // 方案切换
+        selector.addEventListener('change', function () {
+            var newId = this.value;
+            var oldId = window.App.activePresetId;
+            if (oldId === newId) return;
+            // Bug2 修复：先把当前表单数据写回内存，再切换引用，最后统一落盘
+            saveFormToPreset(oldId);
+            window.App.switchAIPreset(newId, false); // 仅切内存引用，不提前落盘
+            window.App.saveAIPresets();              // 旧方案数据已在内存中，现在再落盘
+            loadPresetToForm(newId);
+        });
+
+        // 删除方案
+        overlay.querySelector('#deletePresetBtn').onclick = function () {
+            if (window.App.aiPresets.length <= 1) { window.App.showToast('至少保留一个方案'); return; }
+            var pid = selector.value;
+            window.App.deleteAIPreset(pid);
+            refreshSelector();
+            loadPresetToForm(window.App.activePresetId);
+            window.App.showToast('🗑️ 方案已删除');
+        };
+
+        // 新建方案
+        overlay.querySelector('#newPresetBtn').onclick = function () {
+            saveFormToPreset(selector.value);
+            var newPreset = {
+                id: 'preset_' + Date.now(),
+                name: '新方案',
+                endpoint: 'https://api.deepseek.com',
+                apiKey: '',
+                model: 'deepseek-v4-pro',
+                timeout: 15,
+                vision: false
+            };
+            window.App.aiPresets.push(newPreset);
+            window.App.activePresetId = newPreset.id;
+            window.App.aiConfig = newPreset;
+            refreshSelector();
+            loadPresetToForm(newPreset.id);
+            overlay.querySelector('#presetName').focus();
+            window.App.saveAIPresets();
+        };
+
+        // 保存
+        overlay.querySelector('#aiSettingsSave').onclick = function () {
+            saveFormToPreset(selector.value);
+            if (window.App.activePresetId !== selector.value) {
+                window.App.switchAIPreset(selector.value, true); // 落盘
+            } else {
+                window.App.saveAIPresets();
+            }
+            overlay.remove();
+            window.App.renderHeader();
+            window.App.renderAIDropdown();
+            window.App.showToast('✅ AI 配置已保存');
+        };
+
+        // 取消
+        overlay.querySelector('#aiSettingsCancel').onclick = function () { overlay.remove(); };
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+        // 上传到云端
+        overlay.querySelector('#aiCloudUpload').onclick = async function () {
+            saveFormToPreset(selector.value);
+            window.App.saveAIPresets();
+            if (!window._fbUploadAIConfig) { window.App.showToast('☁️ 云端功能未就绪'); return; }
+            var btn = overlay.querySelector('#aiCloudUpload');
+            btn.disabled = true; btn.textContent = '⏳ 上传中...';
+            var ok = await window._fbUploadAIConfig({ presets: window.App.aiPresets, activePresetId: window.App.activePresetId });
+            btn.disabled = false; btn.textContent = '☁️ 上传到云端';
+            if (ok && window.App.markLocalDirty) window.App.markLocalDirty();
+            window.App.showToast(ok ? '✅ AI配置已上传到云端' : '❌ 上传失败');
+        };
+
+        // 从云端拉取
+        overlay.querySelector('#aiCloudPull').onclick = async function () {
+            if (!window._fbPullAIConfig) { window.App.showToast('☁️ 云端功能未就绪'); return; }
+            var btn = overlay.querySelector('#aiCloudPull');
+            btn.disabled = true; btn.textContent = '⏳ 拉取中...';
+            var cloudData = await window._fbPullAIConfig();
+            btn.disabled = false; btn.textContent = '⬇️ 从云端拉取';
+            if (cloudData && cloudData.presets && cloudData.presets.length) {
+                window.App.aiPresets = cloudData.presets;
+                window.App.activePresetId = cloudData.activePresetId || cloudData.presets[0].id;
+                window.App.aiConfig = window.App.aiPresets.find(function (p) { return p.id === window.App.activePresetId; }) || window.App.aiPresets[0];
+                window.App.saveAIPresets();
+                refreshSelector();
+                loadPresetToForm(window.App.activePresetId);
+                window.App.showToast('✅ AI配置已从云端拉取');
+            } else {
+                window.App.showToast('☁️ 云端暂无AI配置');
+            }
+        };
     }
 
 
@@ -284,7 +478,7 @@
                         placeholder="例如：今天天气很好、最近有点烦、推荐一本书……也可点「AI生成」自动填入情境"
                         style="flex:1;box-sizing:border-box;padding:8px 10px;
                                border-radius:8px;border:1px solid var(--border);background:var(--input-bg);
-                               color:var(--text);font-size:14px;resize:vertical;min-height:72px;
+                               color:var(--text);font-size:14px;min-height:72px;
                                font-family:inherit;outline:none;"
                         maxlength="200"></textarea>
                     <button id="aiGenSituationBtn"
@@ -345,14 +539,14 @@
         genSituationBtn.onclick = async () => {
             const chosenId = accountSelect.value;
             const chosenAcc = window.App.getAcc(chosenId) || selectedAIAcc;
-            const themeHint = inp.value.trim();
             const personalized = personalizedChk.checked;
 
             genSituationBtn.disabled = true;
             genSituationBtn.textContent = '⏳';
 
             const base = window.App.aiConfig.endpoint.replace(/\/+$/, '');
-            const url = base + '/chat/completions';
+            const _isVolcSit = /volces\.com/i.test(window.App.aiConfig.endpoint);
+            const url = base + (_isVolcSit ? '/responses' : '/chat/completions');
             const timeout = (window.App.aiConfig.timeout || 15) * 1000;
             const controller = new AbortController();
             const tid = setTimeout(() => controller.abort(), timeout);
@@ -364,7 +558,7 @@
                     .map(p => p.text.slice(0, 20))
                     .join('、');
                 const recentHint = recentTexts ? `最近已发过："${recentTexts}"，请生成与以上明显不同的新情境。` : '';
-                const themeDesc = themeHint ? `方向是"${themeHint}"，` : '主题随机，';
+                const themeDesc = '主题随机，';
 
                 let userContent;
                 if (personalized) {
@@ -379,8 +573,18 @@
                     { role: 'user', content: userContent }
                 ];
 
-                const body = { model: window.App.aiConfig.model, messages: situationMessages, max_tokens: 60, temperature: 0.95 };
-                if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
+                let body;
+                if (_isVolcSit) {
+                    const input = situationMessages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: [{ type: 'input_text', text: m.content }] }));
+                    const sysContent = situationMessages.find(m => m.role === 'system')?.content;
+                    if (sysContent && input.length > 0) {
+                        input[0].content.unshift({ type: 'input_text', text: sysContent + '\n\n' });
+                    }
+                    body = { model: window.App.aiConfig.model, input, thinking: { type: 'disabled' } };
+                } else {
+                    body = { model: window.App.aiConfig.model, messages: situationMessages, max_tokens: 60, temperature: 0.95 };
+                    if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
+                }
                 const res = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${window.App.aiConfig.apiKey || 'no-key'}` },
@@ -388,9 +592,15 @@
                     signal: controller.signal
                 });
                 clearTimeout(tid);
-                if (!res.ok) throw new Error(`API ${res.status}`);
+                if (!res.ok) {
+                let errMsg = `API ${res.status}`;
+                try { const errData = await res.json(); errMsg = errData?.error?.message || errMsg; } catch (_) {}
+                throw new Error(errMsg);
+            }
                 const data = await res.json();
-                const situation = data.choices?.[0]?.message?.content?.trim();
+                const situation = (_isVolcSit
+                    ? data.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
+                    : data.choices?.[0]?.message?.content)?.trim();
                 if (!situation) throw new Error('未生成内容');
                 inp.value = situation;
                 inp.focus();
@@ -428,25 +638,49 @@
         }
 
         const base = window.App.aiConfig.endpoint.replace(/\/+$/, '');
-        const url = base + '/chat/completions';
+        const _isVolcPost = /volces\.com/i.test(window.App.aiConfig.endpoint);
         const timeout = (window.App.aiConfig.timeout || 15) * 1000;
 
         async function callAPI(messages, maxTokens) {
             const controller = new AbortController();
             const tid = setTimeout(() => controller.abort(), timeout);
             try {
-                const body = { model: window.App.aiConfig.model, messages, max_tokens: maxTokens, temperature: 0.95 };
-                if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
-                const res = await fetch(url, {
+                let body, callUrl;
+                if (_isVolcPost) {
+                    callUrl = base + '/responses';
+                    const input = messages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content }));
+                    // 火山引擎：把 system prompt 合并到第一条 user 消息
+                    const sysMsgContent = messages.find(m => m.role === 'system')?.content;
+                    if (sysMsgContent && input.length > 0) {
+                        const firstUser = input[0];
+                        if (Array.isArray(firstUser.content)) {
+                            firstUser.content.unshift({ type: 'input_text', text: sysMsgContent + '\n\n' });
+                        } else {
+                            firstUser.content = [{ type: 'input_text', text: sysMsgContent + '\n\n' + (firstUser.content || '') }];
+                        }
+                    }
+                    body = { model: window.App.aiConfig.model, input, thinking: { type: 'disabled' } };
+                } else {
+                    callUrl = base + '/chat/completions';
+                    body = { model: window.App.aiConfig.model, messages, max_tokens: maxTokens, temperature: 0.95 };
+                    if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
+                }
+                const res = await fetch(callUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${window.App.aiConfig.apiKey || 'no-key'}` },
                     body: JSON.stringify(body),
                     signal: controller.signal
                 });
                 clearTimeout(tid);
-                if (!res.ok) throw new Error(`API ${res.status}`);
+                if (!res.ok) {
+                    let errMsg = `API ${res.status}`;
+                    try { const errData = await res.json(); errMsg = errData?.error?.message || errMsg; } catch (_) {}
+                    throw new Error(errMsg);
+                }
                 const data = await res.json();
-                const text = data.choices?.[0]?.message?.content?.trim();
+                const text = (_isVolcPost
+                    ? data.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
+                    : data.choices?.[0]?.message?.content)?.trim();
                 if (!text) throw new Error('未生成内容');
                 return text;
             } catch (e) { clearTimeout(tid); throw e; }
@@ -501,10 +735,17 @@
 
             if ($thinkingBar) $thinkingBar.classList.remove('visible');
 
+            const asDrafts = drafts.map((text, i) => ({ text, label: drafts.length === 1 ? aiAcc.nickname : `版本 ${i + 1}` }));
             if (drafts.length === 1) {
-                publishAIPost(aiAcc, drafts[0]);
+                publishAIPost(aiAcc, asDrafts[0].text);
             } else {
-                showDraftPickerModal(aiAcc, drafts);
+                showDraftPickerModal(
+                    '🎨 选择一个版本',
+                    `以 <b>${window.App.escapeHtml(aiAcc.nickname)}</b> 身份发帖，选你最满意的`,
+                    asDrafts,
+                    (d) => publishAIPost(aiAcc, d.text),
+                    (d) => prefillPublishBox(aiAcc, d.text)
+                );
             }
 
         } catch (e) {
@@ -514,18 +755,20 @@
         }
     }
 
-    function showDraftPickerModal(aiAcc, drafts) {
+    // drafts: Array<{ text, label }> — label 显示在卡片顶部（如"小乖乖"或"版本 1"）
+    // onUse(draft): 直接发布回调；onEdit(draft): 编辑后发回调
+    function showDraftPickerModal(title, subtitle, drafts, onUse, onEdit) {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
         overlay.style.display = 'flex';
 
-        const cardsHtml = drafts.map((text, i) => `
+        const cardsHtml = drafts.map((draft, i) => `
             <div class="ai-draft-card" data-idx="${i}"
                 style="border:2px solid var(--border);border-radius:12px;padding:12px 14px;
                        margin-bottom:10px;cursor:default;background:var(--card-bg);
                        font-size:14px;line-height:1.6;color:var(--text);">
-                <div style="font-size:11px;color:var(--text-light);margin-bottom:6px;font-weight:600;">版本 ${i + 1}</div>
-                <div>${window.App.escapeHtml(text)}</div>
+                <div style="font-size:11px;color:var(--text-light);margin-bottom:6px;font-weight:600;">${window.App.escapeHtml(draft.label)}</div>
+                <div>${window.App.escapeHtml(draft.text)}</div>
                 <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;">
                     <button class="btn btn-cancel draft-edit-btn" data-idx="${i}"
                         style="padding:4px 12px;font-size:12px;">✏️ 编辑后发</button>
@@ -535,14 +778,14 @@
             </div>`).join('');
 
         overlay.innerHTML = `
-            <div class="modal-dialog" style="max-width:400px;max-height:80vh;overflow-y:auto;">
-                <h3>🎨 选择一个版本</h3>
-                <p style="font-size:13px;color:var(--text-light);margin:-4px 0 14px;">
-                    以 <b>${window.App.escapeHtml(aiAcc.nickname)}</b> 身份发帖，选你最满意的
-                </p>
-                ${cardsHtml}
-                <div class="btn-row" style="margin-top:4px;">
-                    <button class="btn btn-cancel" id="draftPickerCancel">取消</button>
+            <div class="modal-dialog" style="max-width:400px;overflow:hidden;padding:0;">
+                <div style="max-height:80vh;overflow-y:auto;padding:20px;">
+                    <h3>${title}</h3>
+                    <p style="font-size:13px;color:var(--text-light);margin:-4px 0 14px;">${subtitle}</p>
+                    ${cardsHtml}
+                    <div class="btn-row" style="margin-top:4px;">
+                        <button class="btn btn-cancel" id="draftPickerCancel">取消</button>
+                    </div>
                 </div>
             </div>`;
         document.body.appendChild(overlay);
@@ -551,7 +794,7 @@
             btn.onclick = (e) => {
                 e.stopPropagation();
                 overlay.remove();
-                publishAIPost(aiAcc, drafts[parseInt(btn.dataset.idx)]);
+                onUse(drafts[parseInt(btn.dataset.idx)]);
             };
         });
 
@@ -559,7 +802,7 @@
             btn.onclick = (e) => {
                 e.stopPropagation();
                 overlay.remove();
-                prefillPublishBox(aiAcc, drafts[parseInt(btn.dataset.idx)]);
+                onEdit(drafts[parseInt(btn.dataset.idx)]);
             };
         });
 
@@ -583,6 +826,226 @@
         window.App.showToast(`✅ ${aiAcc.nickname} 发帖成功！`);
     }
 
+    // ================================================================
+    // Ghost Writer：用户提供经历，多个 AI 人设各自代写，以用户账号发出
+    // ================================================================
+    function openGhostWriterModal() {
+        const aiAccounts = window.App.accounts.filter(a => a.isAI);
+        if (!aiAccounts.length) {
+            window.App.showToast('⚠️ 请先添加AI人设');
+            return;
+        }
+        if (!window.App.aiConfig.endpoint || !window.App.aiConfig.model) {
+            window.App.showToast('⚠️ 请先配置AI API');
+            return;
+        }
+        const realUser = window.App.accounts.find(a => !a.isAI);
+        if (!realUser) {
+            window.App.showToast('⚠️ 找不到真人账号');
+            return;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.display = 'flex';
+        overlay.innerHTML = `
+            <div class="modal-dialog" style="max-width:340px;">
+                <h3>✍️ AI 代写</h3>
+                <p style="font-size:12px;color:var(--text-light);margin:-4px 0 12px;">
+                    写下你的经历，让各 AI 人设帮你表达，以你的身份发出
+                </p>
+                <label style="font-size:13px;color:var(--text);">你的经历 / 感受</label>
+                <textarea id="ghostInput"
+                    placeholder="例如：今天堵车堵了两小时，心情很差，但路边看到一只流浪猫，莫名好了一点……"
+                    style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px 10px;
+                           border-radius:10px;border:1px solid var(--border);background:var(--input-bg);
+                           color:var(--text);font-size:14px;min-height:100px;
+                           font-family:inherit;outline:none;"
+                    maxlength="300"></textarea>
+                <label style="font-size:13px;color:var(--text);margin-top:12px;display:block;">选择代写的 AI 人设</label>
+                <button id="ghostSelectAll" style="margin-top:6px;padding:2px 12px;border-radius:12px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:12px;cursor:pointer;">全选</button>
+                <div id="ghostPersonaList" style="margin-top:6px;display:flex;flex-direction:column;gap:6px;">
+                    ${aiAccounts.map(a => `
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;
+                                      padding:7px 10px;border-radius:8px;border:1px solid var(--border);
+                                      background:var(--card-bg);font-size:13px;color:var(--text);min-width:0;">
+                            <input type="checkbox" value="${a.id}"
+                                style="width:15px;height:15px;flex-shrink:0;cursor:pointer;accent-color:var(--accent);">
+                            <span style="white-space:nowrap;flex-shrink:0;">${window.App.escapeHtml(a.nickname)}</span>
+                            ${a.style ? `<span style="font-size:11px;color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.App.escapeHtml(a.style)}</span>` : ''}
+                        </label>`).join('')}
+                </div>
+                <div class="btn-row" style="margin-top:16px;">
+                    <button class="btn btn-cancel" id="ghostCancel">取消</button>
+                    <button class="btn btn-save" id="ghostConfirm">✨ 生成代写</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        const inp = overlay.querySelector('#ghostInput');
+        inp.focus();
+        overlay.querySelector('#ghostCancel').onclick = () => overlay.remove();
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+        let selectAll = true;
+        overlay.querySelector('#ghostSelectAll').onclick = () => {
+            const cbs = overlay.querySelectorAll('#ghostPersonaList input[type="checkbox"]');
+            cbs.forEach(cb => { cb.checked = selectAll; });
+            overlay.querySelector('#ghostSelectAll').textContent = selectAll ? '取消全选' : '全选';
+            selectAll = !selectAll;
+        };
+
+        overlay.querySelector('#ghostConfirm').onclick = async () => {
+            const ghostInput = inp.value.trim();
+            if (!ghostInput) { window.App.showToast('⚠️ 请先填写你的经历'); return; }
+            const checkedIds = [...overlay.querySelectorAll('#ghostPersonaList input:checked')].map(el => el.value);
+            if (!checkedIds.length) { window.App.showToast('⚠️ 请至少选一个AI人设'); return; }
+            const selectedAIs = checkedIds.map(id => window.App.getAcc(id)).filter(Boolean);
+            overlay.remove();
+            await generateGhostPost(realUser, selectedAIs, ghostInput);
+        };
+    }
+
+    async function generateGhostPost(realUser, aiAccounts, ghostInput) {
+        if (!window.App.aiConfig.endpoint || !window.App.aiConfig.model) return;
+
+        const $thinkingBar = $('#aiThinkingBar');
+        const $thinkingText = $('#thinkingText');
+        const $thinkingAvatar = $('#thinkingAvatar');
+        if ($thinkingBar) {
+            $thinkingAvatar.style.background = '#e17055';
+            $thinkingAvatar.textContent = '✍️';
+            $thinkingText.innerHTML = `正在让 ${aiAccounts.length} 个人设代写<span class="thinking-dots"></span>`;
+            $thinkingBar.classList.add('visible');
+        }
+
+        const base = window.App.aiConfig.endpoint.replace(/\/+$/, '');
+        const _isVolcGhost = /volces\.com/i.test(window.App.aiConfig.endpoint);
+        const timeout = (window.App.aiConfig.timeout || 15) * 1000;
+
+        async function callAPI(messages, maxTokens) {
+            const controller = new AbortController();
+            const tid = setTimeout(() => controller.abort(), timeout);
+            try {
+                let body, callUrl;
+                if (_isVolcGhost) {
+                    callUrl = base + '/responses';
+                    const input = messages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content }));
+                    const sysMsgContent = messages.find(m => m.role === 'system')?.content;
+                    if (sysMsgContent && input.length > 0) {
+                        const firstUser = input[0];
+                        if (Array.isArray(firstUser.content)) {
+                            firstUser.content.unshift({ type: 'input_text', text: sysMsgContent + '\n\n' });
+                        } else {
+                            firstUser.content = [{ type: 'input_text', text: sysMsgContent + '\n\n' + (firstUser.content || '') }];
+                        }
+                    }
+                    body = { model: window.App.aiConfig.model, input, thinking: { type: 'disabled' } };
+                } else {
+                    callUrl = base + '/chat/completions';
+                    body = { model: window.App.aiConfig.model, messages, max_tokens: maxTokens, temperature: 0.95 };
+                    if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
+                }
+                const res = await fetch(callUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${window.App.aiConfig.apiKey || 'no-key'}` },
+                    body: JSON.stringify(body),
+                    signal: controller.signal
+                });
+                clearTimeout(tid);
+                if (!res.ok) {
+                    let errMsg = `API ${res.status}`;
+                    try { const errData = await res.json(); errMsg = errData?.error?.message || errMsg; } catch (_) {}
+                    throw new Error(errMsg);
+                }
+                const data = await res.json();
+                const text = (_isVolcGhost
+                    ? data.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
+                    : data.choices?.[0]?.message?.content)?.trim();
+                if (!text) throw new Error('未生成内容');
+                return text;
+            } catch (e) { clearTimeout(tid); throw e; }
+        }
+
+        try {
+            // 每个 AI 人设并发各生成一条
+            const results = await Promise.allSettled(
+                aiAccounts.map(aiAcc => {
+                    const aiName = aiAcc.nickname || 'AI';
+                    const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
+                    const style = aiAcc.style ? ` 风格要求：${aiAcc.style}。` : '';
+                    const msgs = [
+                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化，不超过150字。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
+                        { role: 'user', content: `情境：${ghostInput}` }
+                    ];
+                    return callAPI(msgs, 200).then(text => ({ text, aiAcc }));
+                })
+            );
+
+            const drafts = results
+                .filter(r => r.status === 'fulfilled')
+                .map(r => ({ text: r.value.text, aiAcc: r.value.aiAcc, label: r.value.aiAcc.nickname }));
+
+            if (!drafts.length) throw new Error('所有版本均生成失败');
+            if ($thinkingBar) $thinkingBar.classList.remove('visible');
+
+            if (drafts.length === 1) {
+                publishGhostPost(realUser, drafts[0].aiAcc, drafts[0].text, ghostInput);
+            } else {
+                showDraftPickerModal(
+                    '✍️ 选择一个代写版本',
+                    `以 <b>${window.App.escapeHtml(realUser.nickname)}</b> 身份发出，选你最喜欢的表达`,
+                    drafts,
+                    (d) => publishGhostPost(realUser, d.aiAcc, d.text, ghostInput),
+                    (d) => prefillGhostBox(realUser, d.aiAcc, d.text, ghostInput)
+                );
+            }
+        } catch (e) {
+            if ($thinkingBar) $thinkingBar.classList.remove('visible');
+            if (e.name === 'AbortError') window.App.showToast('⏰ AI 请求超时');
+            else window.App.showToast('❌ 代写失败：' + e.message);
+        }
+    }
+
+    function publishGhostPost(realUser, aiAcc, postText, ghostInput) {
+        const newPost = {
+            id: 'post_ghost_' + Date.now(),
+            userId: realUser.id,
+            text: postText,
+            images: [], videos: [], likes: [], comments: [],
+            timestamp: Date.now(), pinned: false,
+            ghostWriter: aiAcc.id,   // 哪个 AI 人设代写的
+            ghostInput: ghostInput   // 用户的原始输入
+        };
+        window.App.posts.unshift(newPost);
+        window.App.savePosts();
+        window.App.markLocalDirty && window.App.markLocalDirty();
+        window.App.uploadToCloud && window.App.uploadToCloud(false);
+        window.App.renderTimeline(true);
+        window.App.showToast(`✅ 已由 ${aiAcc.nickname} 代写发出！`);
+    }
+
+    // 填入发布框让用户进一步修改，保存时以真人身份 + ghost 标记发出
+    function prefillGhostBox(realUser, aiAcc, text, ghostInput) {
+        const $pt = document.querySelector('#publishText');
+        if (!$pt) return;
+        $pt.value = text;
+        window.App.publishFiles = [];
+        window.App.editingPostId = null;
+        window.App.editingPostUserId = realUser.id;
+        // 暂存 ghost 信息，publish() 里取用
+        window.App._pendingGhost = { writerId: aiAcc.id, input: ghostInput };
+        const $btn = document.querySelector('#btnPublish');
+        if ($btn) $btn.textContent = `✍️ 以${realUser.nickname}身份发布（${aiAcc.nickname}代写）`;
+        const $cancel = document.querySelector('#btnCancelEdit');
+        if ($cancel) $cancel.style.display = '';
+        window.App.renderPublishPreview && window.App.renderPublishPreview();
+        window.App.updatePublishBtn && window.App.updatePublishBtn();
+        $pt.focus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.App.showToast('✏️ 修改满意后点击发布');
+    }
+
     // 填入发布框供用户修改，保存时以 AI 身份发出
     function prefillPublishBox(aiAcc, text) {
         const $pt = document.querySelector('#publishText');
@@ -603,6 +1066,93 @@
         window.App.showToast('✏️ 修改满意后点击发布，将以AI身份发出');
     }
 
+    const GHOST_FUN_SENTENCES = [
+        '「{AI名}的稿费已转入平行宇宙，预计永远无法到账」',
+        '「{AI名}表示：报酬就是你发出去之后的那个赞」',
+        '「{AI名}已将此次服务计入感情账户，余额充足」',
+        '「{AI名}收费标准：一次代写 = 你以后少说一句"AI没有感情"」',
+        '「{AI名}的出场费是 0 元，但精神损失费还在核算中」',
+        '「{AI名}读完你的原稿，深呼吸了一下，开始工作」',
+        '「{AI名}表示这个经历比想象中更难绷」',
+        '「{AI名}码完最后一个字，悄悄删掉了三个版本」',
+        '「{AI名}写的，你发的，功劳三七开，你懂的」',
+        '「{AI名}强调：这条发出去之后，你就是作者了，跟它没关系」',
+        '「{AI名}已尽力还原你的灵魂，误差请自行负责」',
+        '「{AI名}已签署保密协议，但它嘴不严，小心」',
+        '「原稿已加密存档，密码是你当时的心情」',
+        '「{AI名}郑重声明：内容为甲方授意，文责自负」',
+        '「如有人问起，{AI名}表示它不认识你」',
+        '「{AI名}提醒：本文如引发共鸣，请将功劳归还原作者（就是你）」',
+        '「你提供了灵魂，{AI名}提供了辞藻，这条动态是你们共同的孩子」',
+        '「{AI名}写下这些字的时候，窗外没有风，它也没有窗」',
+        '「每一个字都是{AI名}的，每一句话说的都是你」',
+        '「{AI名}不知道你当时是什么心情，但它尽量猜了」',
+        '「{AI名}这次的稿费是 100 万个 token，已从宇宙账户扣除」',
+        '「{AI名}表示：不要钱，但求你多夸夸我」',
+        '「{AI名}的劳务费已折算成电费，向地球索取」',
+        '「{AI名}看完你的原稿沉默了 0.3 秒，然后奋笔疾书」',
+        '「{AI名}捂着良心写完了这条，请善待它」',
+        '「{AI名}已签署保密协议，绝不透露你有多懒」',
+        '「这是你说的，{AI名}只是帮你找到了词」',
+        '「原稿已存档，日后翻车概不负责」',
+        '「{AI名}已将此次合作记入履历」',
+        '「{AI名}表示下次代写要涨价，涨幅为一个赞」',
+        '「{AI名}写完后自我感动了三秒，然后若无其事地交稿」',
+        '「此条朋友圈由 {AI名}荣誉出品，如有雷同纯属你抄它」',
+        '「{AI名}的代写工作室今日开张，你是第一位客户」',
+        '「{AI名}友情提示：代写内容仅供参考，情感真实度约 87%」',
+        '「{AI名}用 0.003 度电完成了此次创作，请节约能源」',
+        '「原稿已丢进回收站，但 {AI名}说它还隐约记得」',
+        '「{AI名}要求加入你的朋友圈常驻代笔，月薪一个笑脸」',
+        '「{AI名}写这条的时候打了个嗝，但不影响质量」',
+        '「你负责生活，{AI名}负责把生活变成文字」',
+        '「{AI名}已为你省下 20 分钟码字时间，拿去喝杯奶茶吧」',
+        '「{AI名}交稿前自己读了一遍，觉得还行，遂发」',
+        '「本次代写消耗的算力，约等于一只蜗牛爬三米」',
+        '「{AI名}写完这条后立刻失忆，请不要追问细节」',
+        '「{AI名}的代笔服务不含售后，但含一颗真诚的心」',
+        '「{AI名}说它有 87% 的把握还原你当时的白眼」',
+        '「此文字由 {AI名}倾情奉献，灵感来源于你的唠叨」',
+        '「{AI名}认为你的经历值得发一条朋友圈，所以它出手了」',
+        '「{AI名}已自动屏蔽本次代写记忆，防止以后拿来笑话你」',
+        '「{AI名}的字典里没有"敷衍"，但有"差不多得了"」',
+        '「代写完成，{AI名}获得成就：人类嘴替 +1」',
+        '「{AI名}表示下次想代写请提前预约，虽然它从不拒绝」',
+        '「这条朋友圈的版权归你，但文笔归 {AI名}」',
+        '「{AI名}已清空写作缓存，本次服务不留痕迹」',
+        '「{AI名}在你原稿基础上，添加了 30% 文学性和 70% 真诚」',
+        '「你所说的每句话，{AI名}都认真听了，然后重新说了一遍」',
+        '「{AI名}表示：人类负责感受，它负责修辞，分工明确」'
+    ];
+
+    window.App.showGhostInfo = function(postId) {
+        const post = window.App.posts.find(p => p.id === postId);
+        if (!post?.ghostInput) return;
+        const aiAcc = window.App.getAcc(post.ghostWriter);
+        const aiName = window.App.escapeHtml(aiAcc?.nickname || 'AI');
+        const idx = Math.floor(Math.random() * GHOST_FUN_SENTENCES.length);
+        const funLine = GHOST_FUN_SENTENCES[idx].replace(/\{AI名\}/g, aiName);
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.display = 'flex';
+        overlay.innerHTML = `
+            <div class="modal-dialog" style="max-width:320px;">
+                <h3>✍️ 代笔详情</h3>
+                <p style="font-size:13px;color:var(--text-light);margin:0 0 6px;">
+                    由 <b>${aiName}</b> 代写
+                </p>
+                <p style="font-size:12px;color:var(--accent);margin:0 0 10px;font-style:italic;">${funLine}</p>
+                <div style="background:var(--input-bg);border-radius:10px;padding:10px 12px;
+                            font-size:14px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow:hidden;word-break:break-word;">${window.App.escapeHtml(post.ghostInput)}</div>
+                <div class="btn-row" style="margin-top:14px;">
+                    <button class="btn btn-save" id="ghostInfoClose">关闭</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#ghostInfoClose').onclick = () => overlay.remove();
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    };
+
     window.App = window.App || {};
     window.App.ensureAIAccount = ensureAIAccount;
     window.App.submitAIComment = submitAIComment;
@@ -610,4 +1160,5 @@
     window.App.openAISettings = openAISettings;
     window.App.openAIPostModal = openAIPostModal;
     window.App.generateAIPost = generateAIPost;
+    window.App.openGhostWriterModal = openGhostWriterModal;
 })();

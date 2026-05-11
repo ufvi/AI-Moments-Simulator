@@ -173,14 +173,21 @@
             }
             window.App.editingPostId = null;
         } else {
-            window.App.posts.push({
+            var newPost = {
                 id: 'post_' + Date.now(), userId: window.App.editingPostUserId || window.App.currentId, text: text, images: imgIds, videos: vidIds,
                 timestamp: ($('#scheduleTime') || {}).value ? new Date($('#scheduleTime').value).getTime() : Date.now(), likes: [], comments: [], pinned: false
-            });
+            };
+            if (window.App._pendingGhost) {
+                newPost.ghostWriter = window.App._pendingGhost.writerId;
+                newPost.ghostInput  = window.App._pendingGhost.input;
+                delete window.App._pendingGhost;
+            }
+            window.App.posts.push(newPost);
             // 发布新内容：标记脏数据，savePosts 内部会触发带时间戳保护的上传
             window.App.savePosts();
         }
         window.App.editingPostUserId = null;
+        delete window.App._pendingGhost;
         for (var k = 0; k < window.App.publishFiles.length; k++) {
             if (!window.App.publishFiles[k].mediaId) URL.revokeObjectURL(window.App.publishFiles[k].previewUrl);
         }
@@ -206,6 +213,7 @@
         var $st = $('#scheduleTime'); if ($st) { $st.style.display = 'none'; $st.value = ''; }
         window.App.editingPostId = null;
         window.App.editingPostUserId = null;
+        delete window.App._pendingGhost;
 
         // 清除发布者选择器
         const switcher = document.getElementById('postUserSwitcher');

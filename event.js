@@ -7,14 +7,25 @@
     // 本地数据修改时间戳（内存中维护）
     // 任何写操作（发布/编辑/导入/手动上传）都应调用 markLocalDirty()
     // ─────────────────────────────────────────────
-    var _localDataTs = parseInt(localStorage.getItem('_localDataTs') || '0', 10);
+    var _localDataTs = parseInt(localStorage.getItem(window.App.NS + '_localDataTs') || '0', 10);
     function markLocalDirty() {
         _localDataTs = Date.now();
-        localStorage.setItem('_localDataTs', String(_localDataTs));
+        localStorage.setItem(window.App.NS + '_localDataTs', String(_localDataTs));
     }
     // 暴露给 App 层，供 publish / saveAccounts 等地方调用
     window.App = window.App || {};
     window.App.markLocalDirty = markLocalDirty;
+
+    // 普通账号排在 AI 账号前面
+    function sortAccounts() {
+        var accs = window.App.accounts;
+        if (!accs) return;
+        accs.sort(function (a, b) {
+            if (a.isAI && !b.isAI) return 1;
+            if (!a.isAI && b.isAI) return -1;
+            return 0;
+        });
+    }
 
     // ─────────────────────────────────────────────
     // 云端数据加载完成标志
@@ -69,12 +80,78 @@
     }
 
     // === 数据导出 ===
-    async function exportData() {
+    function exportData() { showExportOptionsModal(); }
+
+    function showExportOptionsModal() {
+        var imgCount = 0;
+        var vidCount = 0;
+        (window.App.posts || []).forEach(function (p) {
+            imgCount += (p.images || []).length;
+            vidCount += (p.videos || []).length;
+        });
+        var totalMedia = imgCount + vidCount;
+        var mediaText = totalMedia > 0
+            ? ("共有 " + imgCount + " 张图片、" + vidCount + " 个视频（约需几秒到几分钟）")
+            : "没有多媒体文件";
+
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = '<div class="modal-dialog" style="max-width:340px;">' +
+            '<h3>📤 导出数据</h3>' +
+            '<label style="margin-top:10px;">导出内容</label>' +
+            '<div style="display:flex;gap:8px;margin-top:6px;">' +
+            '<button class="btn" id="exportScopeAll" style="flex:1;padding:8px 0;border-radius:8px;border:2px solid var(--accent);background:var(--primary-bg);color:var(--accent);font-weight:600;cursor:pointer;font-size:13px;">全部数据</button>' +
+            '<button class="btn" id="exportScopeAccount" style="flex:1;padding:8px 0;border-radius:8px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);cursor:pointer;font-size:13px;">仅账号</button>' +
+            '</div>' +
+            '<label style="margin-top:12px;">多媒体文件</label>' +
+            '<div style="display:flex;gap:8px;margin-top:6px;">' +
+            '<button class="btn" id="exportMediaYes" style="flex:1;padding:8px 0;border-radius:8px;border:2px solid var(--accent);background:var(--primary-bg);color:var(--accent);font-weight:600;cursor:pointer;font-size:13px;">包含媒体</button>' +
+            '<button class="btn" id="exportMediaNo" style="flex:1;padding:8px 0;border-radius:8px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);cursor:pointer;font-size:13px;">仅数据</button>' +
+            '</div>' +
+            '<p style="font-size:12px;color:var(--text-light);margin:8px 0 0;">' + mediaText + '</p>' +
+            '<div class="btn-row" style="margin-top:16px;">' +
+            '<button class="btn btn-cancel" id="exportOptionsCancel">取消</button>' +
+            '<button class="btn btn-save" id="exportOptionsConfirm">📤 导出</button>' +
+            '</div></div>';
+        document.body.appendChild(overlay);
+
+        var exportScope = 'all';
+        var exportMedia = true;
+
+        function setActive(activeId, inactiveId) {
+            var a = overlay.querySelector('#' + activeId);
+            var b = overlay.querySelector('#' + inactiveId);
+            a.style.border = '2px solid var(--accent)';
+            a.style.background = 'var(--primary-bg)';
+            a.style.color = 'var(--accent)';
+            a.style.fontWeight = '600';
+            b.style.border = '1px solid var(--border)';
+            b.style.background = 'var(--card-bg)';
+            b.style.color = 'var(--text)';
+            b.style.fontWeight = 'normal';
+        }
+
+        overlay.querySelector('#exportScopeAll').onclick = function () { exportScope = 'all'; setActive('exportScopeAll', 'exportScopeAccount'); };
+        overlay.querySelector('#exportScopeAccount').onclick = function () { exportScope = 'account'; setActive('exportScopeAccount', 'exportScopeAll'); };
+        overlay.querySelector('#exportMediaYes').onclick = function () { exportMedia = true; setActive('exportMediaYes', 'exportMediaNo'); };
+        overlay.querySelector('#exportMediaNo').onclick = function () { exportMedia = false; setActive('exportMediaNo', 'exportMediaYes'); };
+
+        overlay.querySelector('#exportOptionsCancel').onclick = function () { overlay.remove(); };
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+        overlay.querySelector('#exportOptionsConfirm').onclick = async function () {
+            overlay.remove();
+            await doExport(exportScope, exportMedia);
+        };
+    }
+
+    async function doExport(scope, includeMedia) {
         try {
+            var exportPosts = scope === 'all' ? (window.App.posts || []) : [];
             var imgCount = 0;
             var vidCount = 0;
             var allMediaIds = [];
-            (window.App.posts || []).forEach(function (p) {
+            exportPosts.forEach(function (p) {
                 (p.images || []).forEach(function (id) { imgCount++; if (allMediaIds.indexOf(id) === -1) allMediaIds.push(id); });
                 (p.videos || []).forEach(function (id) { vidCount++; if (allMediaIds.indexOf(id) === -1) allMediaIds.push(id); });
             });
@@ -82,8 +159,10 @@
             var data = {
                 accounts: window.App.accounts,
                 currentId: window.App.currentId,
-                posts: window.App.posts,
+                posts: exportPosts,
                 aiConfig: window.App.aiConfig,
+                aiPresets: window.App.aiPresets,
+                activePresetId: window.App.activePresetId,
                 activeAIId: window.App.activeAIId,
                 randomAIMode: window.App.randomAIMode,
                 exportedAt: Date.now(),
@@ -92,36 +171,40 @@
 
             var statsText = [
                 "导出时间：" + new Date().toLocaleString(),
+                "导出范围：" + (scope === 'all' ? '全部数据' : '仅账号'),
                 "图片数量：" + imgCount,
                 "视频数量：" + vidCount,
                 "账号数量：" + (window.App.accounts || []).length,
-                "动态数量：" + (window.App.posts || []).length
+                "动态数量：" + exportPosts.length
             ].join("\n");
 
-            if (typeof JSZip !== "undefined") {
+            if (includeMedia && allMediaIds.length > 0 && typeof JSZip !== "undefined") {
+                window.App.showProgress("正在导出数据...");
                 var zip = new JSZip();
                 zip.file("data.json", JSON.stringify(data, null, 2));
                 zip.file("media_stats.txt", statsText);
 
-                if (allMediaIds.length > 0) {
-                    var mediaFolder = zip.folder("media");
-                    for (var i = 0; i < allMediaIds.length; i++) {
-                        var mid = allMediaIds[i];
-                        var blob = null;
-                        var isVideo = (window.App.posts || []).some(function (p) {
-                            return (p.videos || []).indexOf(mid) !== -1;
-                        });
-                        var ext = isVideo ? ".mp4" : ".jpg";
+                var mediaFolder = zip.folder("media");
+                for (var i = 0; i < allMediaIds.length; i++) {
+                    var mid = allMediaIds[i];
+                    var blob = null;
+                    var isVideo = (exportPosts || []).some(function (p) {
+                        return (p.videos || []).indexOf(mid) !== -1;
+                    });
+                    var ext = isVideo ? ".mp4" : ".jpg";
 
-                        try { var rec = await window.App.getMedia(mid); if (rec && rec.blob) blob = rec.blob; } catch (e) { }
-                        if (!blob && window._fbDownloadMedia) { try { blob = await window._fbDownloadMedia(mid); } catch (e) { } }
-                        if (!blob) { try { var u = await window.App.loadMediaUrl(mid); if (u) { var r = await fetch(u); if (r.ok) blob = await r.blob(); } } catch (e) { } }
+                    window.App.showProgress("正在打包 " + (i + 1) + "/" + allMediaIds.length + "...");
 
-                        if (blob) mediaFolder.file(mid + ext, blob);
-                    }
+                    try { var rec = await window.App.getMedia(mid); if (rec && rec.blob) blob = rec.blob; } catch (e) { }
+                    if (!blob && window._fbDownloadMedia) { try { blob = await window._fbDownloadMedia(mid); } catch (e) { } }
+                    if (!blob) { try { var u = await window.App.loadMediaUrl(mid); if (u) { var r = await fetch(u); if (r.ok) blob = await r.blob(); } } catch (e) { } }
+
+                    if (blob) mediaFolder.file(mid + ext, blob);
                 }
+                window.App.showProgress("正在生成压缩包...");
 
                 var zipBlob = await zip.generateAsync({ type: "blob" });
+                window.App.hideProgress();
                 var url = URL.createObjectURL(zipBlob);
                 var a = document.createElement("a");
                 a.href = url;
@@ -131,42 +214,42 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             } else {
-                var json = JSON.stringify(data, null, 2);
-                var outBlob = new Blob([json], { type: "application/json" });
-                var url = URL.createObjectURL(outBlob);
-                var a = document.createElement("a");
-                a.href = url;
-                a.download = "moments-backup-" + new Date().toISOString().slice(0, 10) + ".json";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                window.App.showProgress("正在导出...");
+                if (typeof JSZip !== "undefined") {
+                    var zip2 = new JSZip();
+                    zip2.file("data.json", JSON.stringify(data, null, 2));
+                    zip2.file("media_stats.txt", statsText);
+                    var zipBlob2 = await zip2.generateAsync({ type: "blob" });
+                    window.App.hideProgress();
+                    var url2 = URL.createObjectURL(zipBlob2);
+                    var a2 = document.createElement("a");
+                    a2.href = url2;
+                    a2.download = "moments-backup-" + new Date().toISOString().slice(0, 10) + ".zip";
+                    document.body.appendChild(a2);
+                    a2.click();
+                    document.body.removeChild(a2);
+                    URL.revokeObjectURL(url2);
+                } else {
+                    var json = JSON.stringify(data, null, 2);
+                    var outBlob = new Blob([json], { type: "application/json" });
+                    window.App.hideProgress();
+                    var url3 = URL.createObjectURL(outBlob);
+                    var a3 = document.createElement("a");
+                    a3.href = url3;
+                    a3.download = "moments-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+                    document.body.appendChild(a3);
+                    a3.click();
+                    document.body.removeChild(a3);
+                    URL.revokeObjectURL(url3);
+                }
             }
 
-            showExportSuccessModal(imgCount, vidCount);
+            window.App.showToast("✅ 导出完成");
         } catch (e) {
+            window.App.hideProgress();
             console.error("导出失败:", e);
             window.App.showToast("导出失败");
         }
-    }
-
-    function showExportSuccessModal(imgCount, vidCount) {
-        var overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
-        var mediaPart = "";
-        if (imgCount > 0 || vidCount > 0) {
-            mediaPart = '<p style="color:var(--accent);text-align:center;font-size:13px;margin:8px 0;">\u8bf7\u89e3\u538b\u540e\u624b\u52a8\u68c0\u67e5 media \u6587\u4ef6\u5939\u4e2d\u7684\u591a\u5a92\u4f53\u6587\u4ef6\u662f\u5426\u5b8c\u6574</p>';
-        }
-        overlay.innerHTML = '<div class="modal-dialog">' +
-            '<h3>\u5bfc\u51fa\u6210\u529f</h3>' +
-            '<p style="text-align:center;font-size:15px;margin:12px 0;color:var(--text);">\u56fe\u7247 ' + imgCount + ' \u5f20\u3000\u89c6\u9891 ' + vidCount + ' \u4e2a</p>' +
-            mediaPart +
-            '<div class="btn-row" style="justify-content:center;margin-top:16px;">' +
-            '<button class="btn btn-save" id="exportOkBtn">\u6211\u77e5\u9053\u4e86</button>' +
-            '</div></div>';
-        document.body.appendChild(overlay);
-        overlay.querySelector('#exportOkBtn').onclick = function () { overlay.remove(); };
-        overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
     }
 
     // === 数据导入 ===
@@ -174,9 +257,6 @@
         console.log("[导入] 开始, file:", file.name, file.size, "bytes");
         window.App.showProgress("正在读取...");
         try {
-            function toArray(v) { if (!v) return []; if (Array.isArray(v)) return v; return Object.values(v); }
-            function fixPost(p) { if (!p) return p; p.likes = toArray(p.likes); p.comments = toArray(p.comments); p.images = toArray(p.images); p.videos = toArray(p.videos); return p; }
-
             var data;
             var mediaFilesForImport = [];
 
@@ -287,15 +367,16 @@
             window.App.posts = data.posts;
         }
 
-        window.App.currentId = data.currentId || window.App.accounts[0]?.id || "";
-        if (data.aiConfig && Object.keys(data.aiConfig).length > 0) window.App.aiConfig = data.aiConfig;
+        sortAccounts();
+        window.App.currentId = data.currentId || (window.App.accounts.find(function (a) { return !a.isAI; }) || window.App.accounts[0] || {}).id || "";
+        if (data.aiPresets && data.aiPresets.length) { var curPresetId3 = window.App.activePresetId; window.App.aiPresets = data.aiPresets; window.App.activePresetId = (curPresetId3 && window.App.aiPresets.find(function (p) { return p.id === curPresetId3; })) ? curPresetId3 : (data.activePresetId || data.aiPresets[0].id); window.App.aiConfig = window.App.aiPresets.find(function (p) { return p.id === window.App.activePresetId; }) || window.App.aiPresets[0]; }
         window.App.activeAIId = data.activeAIId || null;
         window.App.randomAIMode = !!data.randomAIMode;
 
         await window.App.saveAppData(window.App.KEY_ACC, window.App.accounts);
         await window.App.saveAppData(window.App.KEY_POSTS, window.App.posts);
         localStorage.setItem(window.App.KEY_CUR, window.App.currentId);
-        if (window.App.aiConfig && Object.keys(window.App.aiConfig).length) { window.App.saveAIConfig(); }
+        window.App.saveAIPresets();
         if (window.App.activeAIId) { localStorage.setItem(window.App.KEY_ACTIVE_AI, window.App.activeAIId); }
         else { localStorage.removeItem(window.App.KEY_ACTIVE_AI); }
         localStorage.setItem(window.App.KEY_RANDOM_AI, window.App.randomAIMode ? "true" : "false");
@@ -308,20 +389,20 @@
 
         // 导入属于用户主动操作 → 标记脏数据 + 强制上传（跳过时间戳比对）
         markLocalDirty();
-        console.log("[导入-应用] 同步到Firebase（强制上传）...");
+        console.log("[导入-应用] 同步到Cloudflare（强制上传）...");
         if (window._fbSyncImmediate) {
             try {
                 var ts = await window._fbSyncImmediate(window.App.accounts, window.App.posts);
                 if (ts) {
                     _localDataTs = ts;
-                    localStorage.setItem('_localDataTs', String(ts));
+                    localStorage.setItem(window.App.NS + '_localDataTs', String(ts));
                 }
-                console.log("[导入-应用] Firebase同步完成");
+                console.log("[导入-应用] Cloudflare同步完成");
             } catch (e) {
-                console.error("[导入-应用] Firebase同步失败:", e);
+                console.error("[导入-应用] Cloudflare同步失败:", e);
             }
         } else {
-            console.warn("[导入-应用] _fbSyncImmediate 不可用，跳过Firebase同步");
+            console.warn("[导入-应用] _fbSyncImmediate 不可用，跳过Cloudflare同步");
         }
 
         window.App.hideProgress();
@@ -380,6 +461,14 @@
                 };
             })
         };
+        if (post.ghostWriter) {
+            var ghostAcc = window.App.getAcc(post.ghostWriter);
+            shared.ghostWriter = {
+                nickname: ghostAcc ? ghostAcc.nickname : 'AI',
+                isAI: true
+            };
+            shared.ghostInput = post.ghostInput || '';
+        }
 
         var jsonStr = JSON.stringify(shared, null, 2);
         var blob = new Blob([jsonStr], { type: 'application/json' });
@@ -398,10 +487,8 @@
     function copyPost(id) {
         var post = (window.App.posts || []).find(function (p) { return p.id === id; });
         if (!post) return;
-        var author = window.App.getAcc(post.userId) || { nickname: '未知' };
 
         var lines = [];
-        lines.push('**' + author.nickname + '**');
         lines.push(post.text || '');
         if (post.images && post.images.length) {
             post.images.forEach(function (img) {
@@ -430,9 +517,8 @@
         if (!post) return;
         var comment = (post.comments || []).find(function (c) { return c.id === commentId; });
         if (!comment) return;
-        var cu = window.App.getAcc(comment.userId) || { nickname: '未知' };
 
-        var text = cu.nickname + '：' + (comment.text || '');
+        var text = (comment.text || '');
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(function () {
                 window.App.showToast('📋 评论已复制');
@@ -477,16 +563,17 @@
                 return;
             }
 
-            function toArray(v) { if (!v) return []; if (Array.isArray(v)) return v; return Object.values(v); }
-            function fixPost(p) { if (!p) return p; p.likes = toArray(p.likes); p.comments = toArray(p.comments); p.images = toArray(p.images); p.videos = toArray(p.videos); return p; }
-
             window.App.accounts = toArray(cloudData.accounts);
             window.App.posts = toArray(cloudData.posts || []).map(fixPost);
+            sortAccounts();
 
             // 加载云端 AI 配置（手动强制拉取，不自动上传）
-            if (cloudData.aiConfig && typeof cloudData.aiConfig === 'object') {
-                window.App.aiConfig = cloudData.aiConfig;
-                window.App.saveAIConfig();
+            if (cloudData.aiConfig && cloudData.aiConfig.presets && cloudData.aiConfig.presets.length) {
+                var curPresetId2 = window.App.activePresetId;
+                window.App.aiPresets = cloudData.aiConfig.presets;
+                window.App.activePresetId = (curPresetId2 && window.App.aiPresets.find(function (p) { return p.id === curPresetId2; })) ? curPresetId2 : (cloudData.aiConfig.activePresetId || window.App.aiPresets[0].id);
+                window.App.aiConfig = window.App.aiPresets.find(function (p) { return p.id === window.App.activePresetId; }) || window.App.aiPresets[0];
+                window.App.saveAIPresets();
             }
 
             await window.App.saveAppData(window.App.KEY_ACC, window.App.accounts);
@@ -495,7 +582,7 @@
             // 将本地时间戳对齐为云端时间戳，避免下次误判为本地更新
             var cloudTs = cloudData._cloudTs || Date.now();
             _localDataTs = cloudTs;
-            localStorage.setItem('_localDataTs', String(cloudTs));
+            localStorage.setItem(window.App.NS + '_localDataTs', String(cloudTs));
 
             window.App.hideProgress();
             renderUI();
@@ -632,6 +719,9 @@
                     case 'ai-post':
                         window.App.openAIPostModal();
                         break;
+                    case 'ghost-writer':
+                        window.App.openGhostWriterModal();
+                        break;
                     case 'export':
                         exportData();
                         break;
@@ -654,7 +744,7 @@
                         break;
                     case 'about':
                         window.location.href = 'about.html';
-                        break;    
+                        break;
                 }
             };
         }
@@ -718,9 +808,10 @@
         var imageInput = $('#imageInput');
         if (imageInput) {
             imageInput.onchange = function () {
+                var MAX_IMAGES = 50;
                 for (var i = 0; i < this.files.length; i++) {
-                    if (window.App.publishFiles.filter(function (m) { return m.type === 'image'; }).length >= 9) {
-                        window.App.showToast('最多9张图片'); break;
+                    if (window.App.publishFiles.filter(function (m) { return m.type === 'image'; }).length >= MAX_IMAGES) {
+                        window.App.showToast('最多' + MAX_IMAGES + '图片'); break;
                     }
                     window.App.publishFiles.push({ type: 'image', file: this.files[i], previewUrl: URL.createObjectURL(this.files[i]) });
                 }
@@ -782,84 +873,14 @@
             };
         }
 
-        var aiSettingsCancel = $('#aiSettingsCancel');
-        if (aiSettingsCancel) aiSettingsCancel.onclick = function () { var m = $('#aiSettingsModal'); if (m) m.style.display = 'none'; };
-
-        // 手动上传 AI 配置到云端
-        var aiSettingsUploadCloud = $('#aiSettingsUploadCloud');
-        if (aiSettingsUploadCloud) {
-            aiSettingsUploadCloud.onclick = async function () {
-                if (!window._fbUploadAIConfig) {
-                    window.App.showToast('☁️ 云端功能未就绪');
-                    return;
-                }
-                // 先用当前表单值更新 aiConfig
-                window.App.aiConfig = {
-                    endpoint: ($('#aiEndpoint') || {}).value || '',
-                    apiKey: ($('#aiApiKey') || {}).value || '',
-                    model: ($('#aiModel') || {}).value || '',
-                    timeout: parseInt(($('#aiTimeout') || {}).value) || 15
-                };
-                window.App.saveAIConfig();
-                $('#aiSettingsUploadCloud').disabled = true;
-                $('#aiSettingsUploadCloud').textContent = '⏳ 上传中...';
-                var ok = await window._fbUploadAIConfig(window.App.aiConfig);
-                $('#aiSettingsUploadCloud').disabled = false;
-                $('#aiSettingsUploadCloud').textContent = '☁️ 上传到云端';
-                window.App.showToast(ok ? '✅ AI配置已上传到云端' : '❌ 上传失败');
-            };
-        }
-
-        // 手动从云端拉取 AI 配置
-        var aiSettingsPullCloud = $('#aiSettingsPullCloud');
-        if (aiSettingsPullCloud) {
-            aiSettingsPullCloud.onclick = async function () {
-                if (!window._fbPullAIConfig) {
-                    window.App.showToast('☁️ 云端功能未就绪');
-                    return;
-                }
-                $('#aiSettingsPullCloud').disabled = true;
-                $('#aiSettingsPullCloud').textContent = '⏳ 拉取中...';
-                var cloudCfg = await window._fbPullAIConfig();
-                $('#aiSettingsPullCloud').disabled = false;
-                $('#aiSettingsPullCloud').textContent = '⬇️ 从云端拉取';
-                if (cloudCfg && typeof cloudCfg === 'object') {
-                    window.App.aiConfig = cloudCfg;
-                    window.App.saveAIConfig();
-                    // 回填表单
-                    var ep = $('#aiEndpoint'); if (ep) ep.value = cloudCfg.endpoint || '';
-                    var ak = $('#aiApiKey'); if (ak) ak.value = cloudCfg.apiKey || '';
-                    var md = $('#aiModel'); if (md) md.value = cloudCfg.model || '';
-                    var to = $('#aiTimeout'); if (to) to.value = cloudCfg.timeout || 15;
-                    window.App.showToast('✅ AI配置已从云端拉取');
-                } else {
-                    window.App.showToast('☁️ 云端暂无AI配置');
-                }
-            };
-        }
-
-        var aiSettingsSave = $('#aiSettingsSave');
-        if (aiSettingsSave) {
-            aiSettingsSave.onclick = function () {
-                window.App.aiConfig = {
-                    endpoint: ($('#aiEndpoint') || {}).value || '',
-                    apiKey: ($('#aiApiKey') || {}).value || '',
-                    model: ($('#aiModel') || {}).value || '',
-                    timeout: parseInt(($('#aiTimeout') || {}).value) || 15
-                };
-                window.App.saveAIConfig();
-                var m = $('#aiSettingsModal'); if (m) m.style.display = 'none';
-                window.App.showToast('✅ AI 设置已保存');
-            };
-        }
-
-        var aiSettingsModal = $('#aiSettingsModal');
-        if (aiSettingsModal) {
-            aiSettingsModal.addEventListener('click', function (e) {
-                if (e.target === aiSettingsModal) aiSettingsModal.style.display = 'none';
-            });
-        }
     }
+
+    document.addEventListener('input', function (e) {
+        if (e.target && e.target.matches && e.target.matches('textarea[id^="commentInput-"]')) {
+            e.target.style.height = 'auto';
+            e.target.style.height = e.target.scrollHeight + 'px';
+        }
+    });
 
     document.addEventListener('click', function (e) {
         var menus = document.querySelectorAll('.post-menu-dropdown');
@@ -914,7 +935,8 @@
             window.App.accounts = (await window.App.getAppData(window.App.KEY_ACC)) || [];
             window.App.currentId = localStorage.getItem(window.App.KEY_CUR);
             window.App.posts = (await window.App.getAppData(window.App.KEY_POSTS)) || [];
-            window.App.aiConfig = window.App.getJSON(window.App.KEY_AI) || {};
+            var activeP = (window.App.aiPresets || []).find(function (p) { return p.id === window.App.activePresetId; });
+            if (activeP) window.App.aiConfig = activeP;
         } catch (e) { }
         renderUI();
     }
@@ -929,16 +951,36 @@
 
     async function init() {
         bindAllEvents();
+
+        // 命名空间标识
+        var nsName = window.App.namespaceName;
+        if (nsName) {
+            document.title = nsName + ' - 朋友圈';
+            var banner = document.getElementById('namespaceBanner');
+            if (banner) {
+                banner.textContent = '📦 ' + nsName;
+                banner.style.display = 'block';
+            }
+        }
+
         document.addEventListener('keydown', function (e) {
-            const publishText = $('#publishText');
+            const publishText = document.getElementById('publishText');
             if (publishText && document.activeElement === publishText) {
-                if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.isComposing) {
+                // 设备没有精细指针（鼠标/触控板） → 视为纯触摸移动设备
+                var isMobile = window.matchMedia('not (pointer: fine)').matches;
+
+                var shouldPublish = isMobile
+                    ? (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing)
+                    : (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.isComposing);
+
+                if (shouldPublish) {
                     e.preventDefault();
                     window.App.publish();
                     return;
                 }
             }
-            if (e.target && e.target.matches && e.target.matches('input[id^="commentInput-"]')) {
+
+            if (e.target && e.target.matches && e.target.matches('textarea[id^="commentInput-"]')) {
                 if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.isComposing) {
                     e.preventDefault();
                     const postId = e.target.id.replace('commentInput-', '');
@@ -1019,6 +1061,7 @@
                 window.App.accounts = lsAccounts.length ? lsAccounts : [];
                 window.App.posts = lsPosts.length ? lsPosts : [];
             }
+            sortAccounts();
 
             if (!window.App.accounts || !window.App.accounts.length || !window.App.accounts.some(function (a) { return !a.isAI; })) {
                 window.App.accounts = window.App.accounts || [];
@@ -1046,16 +1089,16 @@
         renderUI();
 
         // Step 3: 异步加载云端数据（云端优先，拉下来覆盖本地）
-        loadFirebaseInBackground();
+        loadCloudflareInBackground();
 
         window.debug = { clearMediaCache: window.App.clearMediaCache, refreshAll: refreshAll, openDB: window.App.openDB, getMedia: window.App.getMedia, posts: window.App.posts };
     }
 
     // ─────────────────────────────────────────────
-    // Firebase 后台加载：云端数据优先，单向拉取
+    // Cloudflare 后台加载：云端数据优先，单向拉取
     // 不自动上传，只接收云端推送
     // ─────────────────────────────────────────────
-    async function loadFirebaseInBackground() {
+    async function loadCloudflareInBackground() {
         var lastSyncTs = 0;
         window._onLocalSync = function () { lastSyncTs = Date.now(); };
         var initDone = false;
@@ -1080,25 +1123,41 @@
                             var cloudTs = (cloudData._meta && cloudData._meta.updatedAt) ? cloudData._meta.updatedAt : 0;
                             if (cloudTs > 0 && cloudTs > _localDataTs) {
                                 _localDataTs = cloudTs;
-                                localStorage.setItem('_localDataTs', String(cloudTs));
+                                localStorage.setItem(window.App.NS + '_localDataTs', String(cloudTs));
                             }
 
                             window.App.accounts = cloudData.accounts;
                             window.App.posts = cloudData.posts;
+                            sortAccounts();
                             // 加载云端 AI 配置（仅初始加载，不自动上传）
-                            if (cloudData.aiConfig && typeof cloudData.aiConfig === 'object') {
-                                window.App.aiConfig = cloudData.aiConfig;
-                                window.App.saveAIConfig();
+                            if (cloudData.aiConfig && cloudData.aiConfig.presets && cloudData.aiConfig.presets.length) {
+                                var curPresetId = window.App.activePresetId;
+                                window.App.aiPresets = cloudData.aiConfig.presets;
+                                window.App.activePresetId = (curPresetId && window.App.aiPresets.find(function (p) { return p.id === curPresetId; })) ? curPresetId : (cloudData.aiConfig.activePresetId || window.App.aiPresets[0].id);
+                                window.App.aiConfig = window.App.aiPresets.find(function (p) { return p.id === window.App.activePresetId; }) || window.App.aiPresets[0];
+                                window.App.saveAIPresets();
                             }
                             window.App.saveAppData(window.App.KEY_ACC, window.App.accounts);
                             window.App.saveAppData(window.App.KEY_POSTS, window.App.posts);
                             renderUI();
+
+                            // 有效性检查：currentId 无效或指向 AI 账号时，自动选第一个普通账号
+                            var curId = window.App.currentId;
+                            var curAcc = window.App.accounts.find(function (a) { return a.id === curId; });
+                            if (!curAcc || curAcc.isAI) {
+                                var firstNormal = window.App.accounts.find(function (a) { return !a.isAI; });
+                                if (firstNormal) {
+                                    window.App.currentId = firstNormal.id;
+                                    localStorage.setItem(window.App.KEY_CUR, firstNormal.id);
+                                }
+                            }
+
                             window.App.showToast('✅ 已加载云端数据');
                         }
                     }
                 }
             }
-        } catch (e) { console.warn('Firebase加载跳过，使用本地数据'); }
+        } catch (e) { console.warn('Cloudflare加载跳过，使用本地数据'); }
 
         // ── 无论云端有没有数据，初始化阶段结束，解锁后续写操作的上传权限 ──
         _cloudLoadDone = true;
@@ -1111,7 +1170,9 @@
                     // 忽略自己刚上传触发的回调（防循环）
                     if (!initDone || Date.now() - lastSyncTs < 2000) return;
                     window.App.accounts = Array.isArray(cloudAccounts) ? cloudAccounts : Object.values(cloudAccounts);
+                    sortAccounts();
                     window.App.saveAppData(window.App.KEY_ACC, window.App.accounts);
+                    markLocalDirty();
                     window.App.renderHeader(); window.App.renderNormalDropdown(); window.App.renderAIDropdown();
                     window.App.showToast('☁️ 账号已同步');
                 },
@@ -1127,6 +1188,7 @@
                         return p;
                     });
                     window.App.saveAppData(window.App.KEY_POSTS, window.App.posts);
+                    markLocalDirty();
                     window.App.renderTimeline(true);
                     window.App.showToast('☁️ 动态已同步');
                 }

@@ -1,7 +1,7 @@
 (function() {
     // IndexedDB 数据库（含 backup、media 和新增的 appData 仓库）
     // 在外部声明一个变量，用来缓存 Promise
-    // 等待Firebase模块就绪
+    // 等待Cloudflare模块就绪
     const _fbReadyPromise = new Promise(resolve => {
         if (window._fbReady) { resolve(); }
         else { window._fbReadyResolve = resolve; }
@@ -78,7 +78,7 @@
             tx.oncomplete = resolve;
             tx.onerror = () => reject(tx.error);
         });
-        // 同时上传到Firebase Storage（后台进行，不阻塞发帖）
+        // 同时上传到Cloudflare Storage（后台进行，不阻塞发帖）
         if (window._fbUploadMedia) {
             const mimeType = blob.type || (type === 'image' ? 'image/jpeg' : 'video/mp4');
             window._fbUploadMedia(id, blob, mimeType).then(url => {
@@ -117,7 +117,7 @@
             mediaCache.set(id, { blob: rec.blob, url });
             return url;
         }
-        // 本地没有，去Firebase Storage拿
+        // 本地没有，去Cloudflare Storage拿
         if (window._fbGetMediaUrl) {
             const url = await window._fbGetMediaUrl(id);
             if (url) {
@@ -163,6 +163,7 @@
                     if (img) {
                         img.src = url;
                         img.style.display = 'block';
+                        el.classList.add('loaded');
                     }
                 }
             }).catch(() => { });
@@ -178,11 +179,11 @@
     async function autoBackup() {
         try {
             const db = await openDB();
-            const backupData = { key: 'latest', accounts: window.App.accounts, posts: window.App.posts, currentId: window.App.currentId, aiConfig: window.App.aiConfig, timestamp: Date.now() };
+            const backupData = { key: 'latest', accounts: window.App.accounts, posts: window.App.posts, currentId: window.App.currentId, aiConfig: window.App.aiConfig, aiPresets: window.App.aiPresets, activePresetId: window.App.activePresetId, timestamp: Date.now() };
             const tx = db.transaction('backup', 'readwrite');
             tx.objectStore('backup').put(backupData);
             await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = reject; });
-            localStorage.setItem('moments_backup_ts', backupData.timestamp);
+            localStorage.setItem(window.App.NS + 'backup_ts', backupData.timestamp);
         } catch (e) { }
     }
 
@@ -201,9 +202,9 @@
             if (true) { // 自动恢复
                 window.App.accounts = backup.accounts; window.App.saveAccounts();
                 window.App.posts = backup.posts; window.App.savePosts();
-                window.App.currentId = backup.currentId; localStorage.setItem('moments_current', window.App.currentId);
-                if (backup.aiConfig) { window.App.aiConfig = backup.aiConfig; window.App.saveAIConfig(); }
-                localStorage.setItem('moments_backup_ts', backup.timestamp);
+                window.App.currentId = backup.currentId; localStorage.setItem(window.App.KEY_CUR, window.App.currentId);
+                if (backup.aiPresets) { window.App.aiPresets = backup.aiPresets; window.App.activePresetId = backup.activePresetId || backup.aiPresets[0].id; window.App.aiConfig = window.App.aiPresets.find(function(p) { return p.id === window.App.activePresetId; }) || window.App.aiPresets[0]; window.App.saveAIPresets(); }
+                localStorage.setItem(window.App.NS + 'backup_ts', backup.timestamp);
                 window.App.showToast('✅ 已恢复备份');
                 return true;
             }

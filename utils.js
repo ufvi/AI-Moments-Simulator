@@ -38,6 +38,7 @@
         s = s.replace(/__(.+?)__/g, '$1');
         s = s.replace(/\|\|(.+?)\|\|/g, '$1');
         s = s.replace(/`(.+?)`/g, '$1');
+        s = s.replace(/^(?:-{3,}|_{3,}|\*{3,})$/gm, '');
         s = s.replace(/<[^>]*>/g, '');
         return s;
     }
@@ -69,14 +70,24 @@
                         }
                     canvas.width = w;
                     canvas.height = h;
-                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                    canvas.toBlob(b => b ? resolve(b) : reject(new Error('压缩失败')), 'image/jpeg',
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const mime = canvasHasAlpha(ctx, w, h) ? 'image/png' : 'image/jpeg';
+                    canvas.toBlob(b => b ? resolve(b) : reject(new Error('压缩失败')), mime,
                         quality);
                 };
                 img.src = reader.result;
             };
             reader.readAsDataURL(file);
         });
+    }
+
+    function canvasHasAlpha(ctx, w, h) {
+        const data = ctx.getImageData(0, 0, w, h).data;
+        for (let i = 3; i < data.length; i += 4) {
+            if (data[i] < 255) return true;
+        }
+        return false;
     }
 
     function compressImgToDataUrl(file, maxW, quality, cb) {
@@ -92,8 +103,10 @@
                     }
                 canvas.width = w;
                 canvas.height = h;
-                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                cb(canvas.toDataURL('image/jpeg', quality));
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                const mime = canvasHasAlpha(ctx, w, h) ? 'image/png' : 'image/jpeg';
+                cb(canvas.toDataURL(mime, quality));
             };
             img.src = reader.result;
         };
