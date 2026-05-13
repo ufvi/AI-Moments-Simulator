@@ -1319,6 +1319,79 @@
         overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     };
 
+    // ================================================================
+    // AI 语录生成
+    // ================================================================
+    async function generateAIQuote() {
+        var aiAccounts = window.App.accounts.filter(function (a) { return a.isAI; });
+        if (!aiAccounts.length) return null;
+        if (!window.App.aiConfig.endpoint || !window.App.aiConfig.model) {
+            window.App.showToast('⚠️ 请先配置AI');
+            return null;
+        }
+
+        // 随机抽取一个 AI 账号
+        var picked = aiAccounts[Math.floor(Math.random() * aiAccounts.length)];
+        var aiName = picked.nickname || 'AI';
+        var basePrompt = picked.systemPrompt || '你是一个有智慧的朋友';
+        var style = picked.style ? ' 风格要求：' + picked.style + '。' : '';
+
+        var systemPrompt = '你是"' + aiName + '"，' + basePrompt + '。' + style +
+            '请生成一句人生感悟或哲理语录，50字以内。要求：输出纯文字，不要加引号，不要加破折号，不要加任何前缀或署名，只输出语录正文本身。';
+
+        var base = window.App.aiConfig.endpoint.replace(/\/+$/, '');
+        var _isVolcQ = /volces\.com/i.test(window.App.aiConfig.endpoint);
+        var url = base + (_isVolcQ ? '/responses' : '/chat/completions');
+        var timeout = (window.App.aiConfig.timeout || 15) * 1000;
+        var controller = new AbortController();
+        var tid = setTimeout(function () { controller.abort(); }, timeout);
+
+        try {
+            var messages;
+            if (_isVolcQ) {
+                messages = [{ role: 'user', content: [{ type: 'input_text', text: systemPrompt + '\n\n请生成一句人生感悟或哲理语录。' }] }];
+            } else {
+                messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: '请生成一句人生感悟或哲理语录。' }];
+            }
+
+            var body;
+            if (_isVolcQ) {
+                body = { model: window.App.aiConfig.model, input: messages, thinking: { type: 'disabled' } };
+            } else {
+                body = { model: window.App.aiConfig.model, messages: messages, max_tokens: 80, temperature: 0.95 };
+                if (window.App.aiConfig.model.indexOf('deepseek-v4') !== -1) body.thinking = { type: 'disabled' };
+            }
+
+            var res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (window.App.aiConfig.apiKey || 'no-key') },
+                body: JSON.stringify(body),
+                signal: controller.signal
+            });
+            clearTimeout(tid);
+            if (!res.ok) {
+                var errMsg = 'API ' + res.status;
+                try { var errData = await res.json(); errMsg = errData.error.message || errMsg; } catch (_) {}
+                throw new Error(errMsg);
+            }
+            var data = await res.json();
+            var text = (_isVolcQ
+                ? (data.output || []).filter(function (o) { return o.type === 'message'; }).flatMap(function (o) { return (o.content || []).filter(function (c) { return c.type === 'output_text'; }); }).map(function (c) { return c.text; }).join('')
+                : ((data.choices || [])[0] || {}).message && ((data.choices || [])[0] || {}).message.content || ''
+            ).trim();
+            // 清理：去掉可能的引号包裹和破折号前缀
+            text = text.replace(/^"|"$/g, '').replace(/^'|'$/g, '').replace(/^——/, '').trim();
+            if (!text) throw new Error('未生成有效内容');
+
+            return { text: text, aiName: aiName, aiId: picked.id };
+        } catch (e) {
+            clearTimeout(tid);
+            if (e.name === 'AbortError') window.App.showToast('⏰ 语录生成超时');
+            else window.App.showToast('❌ 语录生成失败：' + e.message);
+            return null;
+        }
+    }
+
     window.App = window.App || {};
     window.App.ensureAIAccount = ensureAIAccount;
     window.App.submitAIComment = submitAIComment;
@@ -1329,4 +1402,5 @@
     window.App.openAIPostModal = openAIPostModal;
     window.App.generateAIPost = generateAIPost;
     window.App.openGhostWriterModal = openGhostWriterModal;
+    window.App.generateAIQuote = generateAIQuote;
 })();

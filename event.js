@@ -165,6 +165,7 @@
                 activePresetId: window.App.activePresetId,
                 activeAIId: window.App.activeAIId,
                 randomAIMode: window.App.randomAIMode,
+                savedQuotes: window.App.getSavedQuotes ? window.App.getSavedQuotes() : [],
                 exportedAt: Date.now(),
                 mediaStats: { images: imgCount, videos: vidCount }
             };
@@ -372,6 +373,9 @@
         if (data.aiPresets && data.aiPresets.length) { var curPresetId3 = window.App.activePresetId; window.App.aiPresets = data.aiPresets; window.App.activePresetId = (curPresetId3 && window.App.aiPresets.find(function (p) { return p.id === curPresetId3; })) ? curPresetId3 : (data.activePresetId || data.aiPresets[0].id); window.App.aiConfig = window.App.aiPresets.find(function (p) { return p.id === window.App.activePresetId; }) || window.App.aiPresets[0]; }
         window.App.activeAIId = data.activeAIId || null;
         window.App.randomAIMode = !!data.randomAIMode;
+        if (data.savedQuotes && Array.isArray(data.savedQuotes)) {
+            localStorage.setItem(window.App.NS + 'saved_quotes', JSON.stringify(data.savedQuotes));
+        }
 
         await window.App.saveAppData(window.App.KEY_ACC, window.App.accounts);
         await window.App.saveAppData(window.App.KEY_POSTS, window.App.posts);
@@ -579,6 +583,14 @@
             await window.App.saveAppData(window.App.KEY_ACC, window.App.accounts);
             await window.App.saveAppData(window.App.KEY_POSTS, window.App.posts);
 
+            // 加载云端收藏语录
+            if (window._fbPullSavedQuotes) {
+                var cloudQuotes = await window._fbPullSavedQuotes();
+                if (cloudQuotes && cloudQuotes.length) {
+                    localStorage.setItem(window.App.NS + 'saved_quotes', JSON.stringify(cloudQuotes));
+                }
+            }
+
             // 将本地时间戳对齐为云端时间戳，避免下次误判为本地更新
             var cloudTs = cloudData._cloudTs || Date.now();
             _localDataTs = cloudTs;
@@ -602,6 +614,10 @@
         try {
             markLocalDirty(); // 手动触发时强制刷新时间戳
             var result = await uploadToCloud(true); // force=true 跳过时间戳比对
+            // 同时上传收藏语录
+            if (window._fbUploadSavedQuotes && window.App.getSavedQuotes) {
+                await window._fbUploadSavedQuotes(window.App.getSavedQuotes());
+            }
             window.App.hideProgress();
             if (result && result.error) {
                 window.App.showToast('❌ 上传失败，请检查网络');
@@ -677,6 +693,118 @@
             $aiDropdown.onclick = function (e) { e.stopPropagation(); };
         }
 
+        // 侧边栏普通账号区域点击
+        var sidebarUserArea = $('#sidebarUserArea');
+        if (sidebarUserArea) {
+            sidebarUserArea.onclick = function (e) {
+                e.stopPropagation();
+                var $normalDropdown = $('#normalDropdown');
+                if (!$normalDropdown) return;
+                var isOpen = $normalDropdown.style.display === 'block';
+                window.App.closeAllDropdowns();
+                if (!isOpen) {
+                    var rect = e.currentTarget.getBoundingClientRect();
+                    $normalDropdown.style.top = (rect.bottom + 4) + 'px';
+                    $normalDropdown.style.left = rect.left + 'px';
+                    $normalDropdown.style.display = 'block';
+                    window.App.renderNormalDropdown();
+                }
+            };
+        }
+
+        // 侧边栏 AI 账号区域点击
+        var sidebarAIArea = $('#sidebarAIArea');
+        if (sidebarAIArea) {
+            sidebarAIArea.onclick = function (e) {
+                e.stopPropagation();
+                var $aiDropdown = $('#aiDropdown');
+                if (!$aiDropdown) return;
+                var isOpen = $aiDropdown.style.display === 'block';
+                window.App.closeAllDropdowns();
+                if (!isOpen) {
+                    var rect = e.currentTarget.getBoundingClientRect();
+                    var dropdownWidth = $aiDropdown.offsetWidth || 220;
+                    $aiDropdown.style.top = (rect.bottom + 4) + 'px';
+                    $aiDropdown.style.left = (rect.left + rect.width / 2 - dropdownWidth / 2) + 'px';
+                    $aiDropdown.style.display = 'block';
+                    window.App.renderAIDropdown();
+                }
+            };
+        }
+
+        // 侧边栏导航点击
+        var sidebar = $('#sidebar');
+        if (sidebar) {
+            sidebar.addEventListener('click', function (e) {
+                var item = e.target.closest('.sidebar-nav-item');
+                if (!item) return;
+                var action = item.dataset.action;
+
+                // 高亮当前项
+                sidebar.querySelectorAll('.sidebar-nav-item').forEach(function (el) {
+                    el.classList.remove('active');
+                });
+                item.classList.add('active');
+
+                switch (action) {
+                    case 'publish':
+                        var pubText = document.getElementById('publishText');
+                        if (pubText) {
+                            pubText.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            pubText.focus();
+                        }
+                        break;
+                    case 'toggle-theme':
+                        document.body.classList.toggle('dark-mode');
+                        var dark = document.body.classList.contains('dark-mode');
+                        localStorage.setItem(window.App.KEY_THEME, dark ? 'dark' : 'light');
+                        window.App.showToast(dark ? '🌙 已切换夜间模式' : '☀️ 已切换日间模式');
+                        var themeItem = $('#settingsThemeItem');
+                        if (themeItem) themeItem.textContent = dark ? '☀️ 切换日间模式' : '🌙 切换夜间模式';
+                        if (item) item.textContent = dark ? '☀️ 日间模式' : '🌙 夜间模式';
+                        var dtb = document.getElementById('desktopThemeBtn');
+                        if (dtb) dtb.textContent = dark ? '☀️ 白天模式' : '🌙 夜间模式';
+                        break;
+                    case 'search':
+                        if (window.innerWidth > 768) {
+                            var dsi = document.getElementById('desktopSearchInput');
+                            if (dsi) { dsi.focus(); dsi.select(); }
+                        } else {
+                            window.App.toggleSearch();
+                        }
+                        break;
+                    case 'ai-settings':
+                        window.App.openAISettings();
+                        break;
+                    case 'ai-post':
+                        window.App.openAIPostModal();
+                        break;
+                    case 'ghost-writer':
+                        window.App.openGhostWriterModal();
+                        break;
+                    case 'export':
+                        exportData();
+                        break;
+                    case 'import':
+                        var inp2 = document.createElement('input');
+                        inp2.type = 'file';
+                        inp2.accept = '.zip,.json';
+                        inp2.onchange = function () { if (inp2.files[0]) importData(inp2.files[0]); };
+                        inp2.click();
+                        break;
+                    case 'upload-cloud':
+                        manualUploadToCloud();
+                        break;
+                    case 'navigate':
+                        window.location.href = '/navigate.html';
+                        break;
+                    case 'saved-quotes':
+                        window.App.showSavedQuotesModal();
+                        break;
+                }
+            });
+        }
+
         var btnMoreMenu = $('#btnMoreMenu');
         if (btnMoreMenu) {
             btnMoreMenu.onclick = function (e) {
@@ -690,6 +818,8 @@
                     var isDark = document.body.classList.contains('dark-mode');
                     var themeItem = $('#settingsThemeItem');
                     if (themeItem) themeItem.textContent = isDark ? '☀️ 切换日间模式' : '🌙 切换夜间模式';
+                    var dtb = document.getElementById('desktopThemeBtn');
+                    if (dtb) dtb.textContent = isDark ? '☀️ 白天模式' : '🌙 夜间模式';
                 }
             };
         }
@@ -706,9 +836,13 @@
                 switch (action) {
                     case 'toggle-theme':
                         document.body.classList.toggle('dark-mode');
-                        var dark = document.body.classList.contains('dark-mode');
-                        localStorage.setItem(window.App.KEY_THEME, dark ? 'dark' : 'light');
-                        window.App.showToast(dark ? '🌙 已切换夜间模式' : '☀️ 已切换日间模式');
+                        var dark3 = document.body.classList.contains('dark-mode');
+                        localStorage.setItem(window.App.KEY_THEME, dark3 ? 'dark' : 'light');
+                        window.App.showToast(dark3 ? '🌙 已切换夜间模式' : '☀️ 已切换日间模式');
+                        var themeItem3 = $('#settingsThemeItem');
+                        if (themeItem3) themeItem3.textContent = dark3 ? '☀️ 切换日间模式' : '🌙 切换夜间模式';
+                        var dtb = document.getElementById('desktopThemeBtn');
+                        if (dtb) dtb.textContent = dark3 ? '☀️ 白天模式' : '🌙 夜间模式';
                         break;
                     case 'search':
                         toggleSearch();
@@ -732,18 +866,17 @@
                         inp.onchange = function () { if (inp.files[0]) importData(inp.files[0]); };
                         inp.click();
                         break;
-                    case 'refresh':
-                        window.App.clearMediaCache();
-                        window.App.refreshAll().then(function () { window.App.showToast('🔄 已刷新'); });
-                        break;
                     case 'upload-cloud':
                         manualUploadToCloud();
                         break;
-                    case 'force-pull-cloud':
-                        forceLoadFromCloud();
+                    case 'navigate':
+                        window.location.href = '/navigate.html';
                         break;
                     case 'about':
                         window.location.href = 'about.html';
+                        break;
+                    case 'saved-quotes':
+                        window.App.showSavedQuotesModal();
                         break;
                 }
             };
@@ -873,6 +1006,54 @@
             };
         }
 
+        // 桌面端搜索框
+        var desktopSearchInput = document.getElementById('desktopSearchInput');
+        var desktopSearchClear = document.getElementById('desktopSearchClear');
+        if (desktopSearchInput) {
+            desktopSearchInput.addEventListener('input', function () {
+                var q = desktopSearchInput.value.trim();
+                if (desktopSearchClear) desktopSearchClear.style.display = q ? 'block' : 'none';
+                window.App.renderSearchResults(q);
+            });
+        }
+        if (desktopSearchClear) {
+            desktopSearchClear.addEventListener('click', function () {
+                desktopSearchInput.value = '';
+                desktopSearchClear.style.display = 'none';
+                window.App.renderTimeline(true);
+            });
+        }
+
+        // 桌面端夜间模式按钮
+        var desktopThemeBtn = document.getElementById('desktopThemeBtn');
+        if (desktopThemeBtn) {
+            desktopThemeBtn.addEventListener('click', function () {
+                document.body.classList.toggle('dark-mode');
+                var isDark = document.body.classList.contains('dark-mode');
+                localStorage.setItem(window.App.KEY_THEME, isDark ? 'dark' : 'light');
+                window.App.showToast(isDark ? '🌙 已切换夜间模式' : '☀️ 已切换日间模式');
+                desktopThemeBtn.textContent = isDark ? '☀️ 白天模式' : '🌙 夜间模式';
+                var themeItem = $('#settingsThemeItem');
+                if (themeItem) themeItem.textContent = isDark ? '☀️ 切换日间模式' : '🌙 切换夜间模式';
+            });
+        }
+
+        // 语录刷新按钮
+        var btnQuoteRefresh = document.getElementById('btnQuoteRefresh');
+        if (btnQuoteRefresh) {
+            btnQuoteRefresh.addEventListener('click', function () {
+                window.App.refreshQuote();
+            });
+        }
+
+        // 语录收藏按钮
+        var btnQuoteFav = document.getElementById('btnQuoteFav');
+        if (btnQuoteFav) {
+            btnQuoteFav.addEventListener('click', function () {
+                window.App.toggleQuoteFav();
+            });
+        }
+
     }
 
     document.addEventListener('input', function (e) {
@@ -929,6 +1110,9 @@
             });
         }
     }
+    // 设置桌面端初始主题按钮文字
+    var dtbInit = document.getElementById('desktopThemeBtn');
+    if (dtbInit) dtbInit.textContent = theme === 'dark' ? '☀️ 白天模式' : '🌙 夜间模式';
 
     async function refreshAll() {
         try {
@@ -961,6 +1145,11 @@
                 banner.textContent = '📦 ' + nsName;
                 banner.style.display = 'block';
             }
+        }
+        // 同步命名空间到桌面顶栏
+        var topbarNs = document.getElementById('topbarNamespace');
+        if (topbarNs) {
+            topbarNs.textContent = nsName || '';
         }
 
         document.addEventListener('keydown', function (e) {
@@ -1037,6 +1226,18 @@
             console.error('初始化失败:', e);
             renderUI();
             window.App.showToast('⚠️ 加载数据失败，请刷新页面');
+        }
+
+        // 自动生成语录
+        var aiAccs = window.App.accounts.filter(function (a) { return a.isAI; });
+        var quoteSection = document.getElementById('quoteSection');
+        if (quoteSection) {
+            if (aiAccs.length > 0) {
+                quoteSection.classList.remove('no-ai');
+                window.App.refreshQuote();
+            } else {
+                quoteSection.classList.add('no-ai');
+            }
         }
     }
 
@@ -1139,6 +1340,14 @@
                             }
                             window.App.saveAppData(window.App.KEY_ACC, window.App.accounts);
                             window.App.saveAppData(window.App.KEY_POSTS, window.App.posts);
+                            // 加载云端收藏语录
+                            if (window._fbPullSavedQuotes) {
+                                window._fbPullSavedQuotes().then(function (cloudQuotes) {
+                                    if (cloudQuotes && cloudQuotes.length) {
+                                        localStorage.setItem(window.App.NS + 'saved_quotes', JSON.stringify(cloudQuotes));
+                                    }
+                                });
+                            }
                             renderUI();
 
                             // 有效性检查：currentId 无效或指向 AI 账号时，自动选第一个普通账号
@@ -1206,6 +1415,87 @@
     window.App.copyPost = copyPost;
     window.App.copyComment = copyComment;
     window.App.searchActive = searchActive;
+    // 收藏语录持久化
+    var KEY_SAVED_QUOTES = window.App.NS + 'saved_quotes';
+    function getSavedQuotes() {
+        try { return JSON.parse(localStorage.getItem(KEY_SAVED_QUOTES) || '[]'); } catch (e) { return []; }
+    }
+    function syncSavedQuotesToCloud() {
+        if (window._fbUploadSavedQuotes) {
+            window._fbUploadSavedQuotes(getSavedQuotes());
+        }
+    }
+    function saveQuote(quote) {
+        var list = getSavedQuotes();
+        var dup = list.some(function (q) { return q.text === quote.text && q.aiName === quote.aiName; });
+        if (!dup) {
+            list.push({ text: quote.text, aiName: quote.aiName, aiId: quote.aiId, savedAt: Date.now() });
+            localStorage.setItem(KEY_SAVED_QUOTES, JSON.stringify(list));
+            syncSavedQuotesToCloud();
+        }
+    }
+    function removeSavedQuote(idx) {
+        var list = getSavedQuotes();
+        list.splice(idx, 1);
+        localStorage.setItem(KEY_SAVED_QUOTES, JSON.stringify(list));
+        syncSavedQuotesToCloud();
+    }
+    function isQuoteSaved(quote) {
+        if (!quote) return false;
+        var list = getSavedQuotes();
+        return list.some(function (q) { return q.text === quote.text && q.aiName === quote.aiName; });
+    }
+
+    // 语录状态
+    var currentQuote = null;
+    var currentQuoteFaved = false;
+
+    async function refreshQuote() {
+        var btnRefresh = document.getElementById('btnQuoteRefresh');
+        var btnFav = document.getElementById('btnQuoteFav');
+        if (btnRefresh) btnRefresh.disabled = true;
+        if (btnFav) btnFav.disabled = true;
+
+        if (window.App.showQuoteLoading) window.App.showQuoteLoading();
+
+        var result = await window.App.generateAIQuote();
+        if (btnRefresh) btnRefresh.disabled = false;
+        if (btnFav) btnFav.disabled = false;
+
+        if (result) {
+            currentQuote = result;
+            currentQuoteFaved = isQuoteSaved(result);
+            if (window.App.renderQuoteCard) window.App.renderQuoteCard(result);
+            if (btnFav) btnFav.textContent = currentQuoteFaved ? '❤️' : '🤍';
+        }
+    }
+
+    function toggleQuoteFav() {
+        if (!currentQuote) return;
+        var btnFav = document.getElementById('btnQuoteFav');
+        if (currentQuoteFaved) {
+            // 取消收藏
+            var list = getSavedQuotes();
+            var idx = list.findIndex(function (q) { return q.text === currentQuote.text && q.aiName === currentQuote.aiName; });
+            if (idx !== -1) removeSavedQuote(idx);
+            currentQuoteFaved = false;
+            if (btnFav) btnFav.textContent = '🤍';
+            window.App.showToastBottom('已取消收藏');
+        } else {
+            saveQuote(currentQuote);
+            currentQuoteFaved = true;
+            if (btnFav) btnFav.textContent = '❤️';
+            window.App.showToastBottom('❤️ 已收藏语录');
+        }
+    }
+
+    window.App.getSavedQuotes = getSavedQuotes;
+    window.App.saveQuote = saveQuote;
+    window.App.removeSavedQuote = removeSavedQuote;
+    window.App.isQuoteSaved = isQuoteSaved;
+    window.App.refreshQuote = refreshQuote;
+    window.App.toggleQuoteFav = toggleQuoteFav;
+
     window.App.forceLoadFromCloud = forceLoadFromCloud;
     window.App.manualUploadToCloud = manualUploadToCloud;
 

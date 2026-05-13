@@ -17,19 +17,19 @@
             $headerAvatar.innerHTML =
                 '<div class="header-avatar-placeholder" style="background:#ccc;">?</div>';
             $headerNickname.textContent = '未登录';
-            return;
-        }
-        if (acc.avatarText) {
-            $headerAvatar.innerHTML =
-                `<div class="header-avatar-placeholder" style="background:${acc.avatarBg};font-size:${window.App.isEmoji(acc.avatarText) ? '20px' : '15px'}">${window.App.escapeHtml(acc.avatarText)}</div>`;
-        } else if (acc.avatar && acc.avatar.startsWith('data:')) {
-            $headerAvatar.innerHTML =
-                `<img class="header-avatar" src="${acc.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="header-avatar-placeholder" style="display:none;background:${acc.avatarBg}">${acc.nickname.charAt(0).toUpperCase()}</div>`;
         } else {
-            $headerAvatar.innerHTML =
-                `<div class="header-avatar-placeholder" style="background:${acc.avatarBg}">${acc.nickname.charAt(0).toUpperCase()}</div>`;
+            if (acc.avatarText) {
+                $headerAvatar.innerHTML =
+                    `<div class="header-avatar-placeholder" style="background:${acc.avatarBg};font-size:${window.App.isEmoji(acc.avatarText) ? '20px' : '15px'}">${window.App.escapeHtml(acc.avatarText)}</div>`;
+            } else if (acc.avatar && acc.avatar.startsWith('data:')) {
+                $headerAvatar.innerHTML =
+                    `<img class="header-avatar" src="${acc.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="header-avatar-placeholder" style="display:none;background:${acc.avatarBg}">${acc.nickname.charAt(0).toUpperCase()}</div>`;
+            } else {
+                $headerAvatar.innerHTML =
+                    `<div class="header-avatar-placeholder" style="background:${acc.avatarBg}">${acc.nickname.charAt(0).toUpperCase()}</div>`;
+            }
+            $headerNickname.textContent = acc.nickname;
         }
-        $headerNickname.textContent = acc.nickname;
 
         const $headerAIName = $('#headerAIName');
         const $headerAIArea = $('#headerAIArea');
@@ -40,6 +40,109 @@
         if ($headerAIArea) {
             $headerAIArea.classList.toggle('random-mode', window.App.randomAIMode);
         }
+
+        // 同步渲染侧边栏用户区
+        const $sidebarUserArea = $('#sidebarUserArea');
+        if ($sidebarUserArea) {
+            let sbAvHtml;
+            if (!acc) {
+                sbAvHtml = '<div class="header-avatar-placeholder" style="background:#ccc;">?</div>';
+            } else if (acc.avatarText) {
+                sbAvHtml = '<div class="header-avatar-placeholder" style="background:' + acc.avatarBg + ';font-size:' + (window.App.isEmoji(acc.avatarText) ? '20px' : '15px') + '">' + window.App.escapeHtml(acc.avatarText) + '</div>';
+            } else if (acc.avatar && acc.avatar.startsWith('data:')) {
+                sbAvHtml = '<img class="header-avatar" src="' + acc.avatar + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">' +
+                    '<div class="header-avatar-placeholder" style="display:none;background:' + acc.avatarBg + '">' + acc.nickname.charAt(0).toUpperCase() + '</div>';
+            } else {
+                sbAvHtml = '<div class="header-avatar-placeholder" style="background:' + (acc ? acc.avatarBg : '#ccc') + '">' + (acc ? acc.nickname.charAt(0).toUpperCase() : '?') + '</div>';
+            }
+            $sidebarUserArea.innerHTML = sbAvHtml +
+                '<span class="header-nickname">' + window.App.escapeHtml(acc ? acc.nickname : '未登录') + '</span>' +
+                '<span class="header-arrow">▾</span>';
+        }
+
+        // 同步渲染右侧栏 AI 列表
+        renderSidebarAIList();
+    }
+
+    function renderSidebarAIList() {
+        var container = document.getElementById('sidebarAIList');
+        if (!container) return;
+
+        var aiAccounts = window.App.accounts.filter(function (a) { return a.isAI; });
+
+        // 语录卡片可见性
+        var quoteSection = document.getElementById('quoteSection');
+        if (quoteSection) {
+            quoteSection.classList.toggle('no-ai', !aiAccounts || aiAccounts.length === 0);
+        }
+
+        if (!aiAccounts || aiAccounts.length === 0) {
+            container.innerHTML = '<div style="font-size:12px;color:var(--text-light);padding:8px;">暂无 AI 账号</div>';
+            return;
+        }
+
+        var html = '';
+
+        // 随机 AI 模式开关
+        html += '<div class="random-ai-toggle-row' + (window.App.randomAIMode ? ' active' : '') + '" id="sidebarRandomAIToggle">' +
+            '<span class="toggle-label"><span class="dice-icon">🎲</span> 随机AI模式</span>' +
+            '<div class="toggle-switch' + (window.App.randomAIMode ? ' active' : '') + '" id="sidebarRandomAIToggleSwitch"></div>' +
+            '</div>';
+
+        // AI 账号列表
+        aiAccounts.forEach(function (a) {
+            var isActive = a.id === window.App.activeAIId;
+            var aiAvText = a.avatarText || '🤖';
+            var aiAvIsEmoji = window.App.isEmoji(aiAvText);
+            var act = a.activity ?? 1;
+            html += '<div class="sidebar-ai-account-item' + (isActive ? ' active' : '') + '" data-ai-id="' + a.id + '">' +
+                '<div class="avatar-placeholder-sm" style="background:' + a.avatarBg + ';font-size:' + (aiAvIsEmoji ? '18px' : '13px') + ';flex-shrink:0;">' + window.App.escapeHtml(aiAvText) + '</div>' +
+                '<span class="sidebar-ai-account-name">' + window.App.escapeHtml(a.nickname) + '</span>' +
+                (isActive ? '<span class="sidebar-ai-check">✓</span>' : '') +
+                '<span class="account-dropdown-edit" data-action="edit-ai" data-account-id="' + a.id + '">✎</span>' +
+                '</div>';
+        });
+
+        html += '<div class="account-dropdown-add" id="sidebarAddAIAccount" style="color:var(--ai-purple);">+ 添加 AI 人设</div>';
+
+        container.innerHTML = html;
+
+        // "添加 AI 人设" 按钮
+        var addBtn = document.getElementById('sidebarAddAIAccount');
+        if (addBtn) {
+            addBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                window.App.addAIAccount();
+            });
+        }
+
+        // 随机模式开关事件
+        var toggleRow = document.getElementById('sidebarRandomAIToggle');
+        var toggleSwitch = document.getElementById('sidebarRandomAIToggleSwitch');
+        var toggleRandom = function () {
+            window.App.randomAIMode = !window.App.randomAIMode;
+            localStorage.setItem(window.App.KEY_RANDOM_AI, window.App.randomAIMode);
+            renderHeader();
+            window.App.showToastBottom(window.App.randomAIMode ? '🎲 随机AI模式已开启' : '🎲 随机AI模式已关闭');
+        };
+        if (toggleRow) toggleRow.addEventListener('click', function (e) { e.stopPropagation(); toggleRandom(); });
+        if (toggleSwitch) toggleSwitch.addEventListener('click', function (e) { e.stopPropagation(); toggleRandom(); });
+
+        // AI 账号切换 / 编辑事件
+        container.querySelectorAll('[data-ai-id]').forEach(function (item) {
+            item.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (e.target.dataset.action === 'edit-ai') {
+                    window.App.editAccount(e.target.dataset.accountId);
+                    return;
+                }
+                window.App.activeAIId = item.dataset.aiId;
+                localStorage.setItem(window.App.KEY_ACTIVE_AI, window.App.activeAIId);
+                window.App.showToastBottom('🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
+                renderHeader();
+                renderAIDropdown();
+            });
+        });
     }
 
     function closeAllDropdowns() {
@@ -542,6 +645,76 @@
     window.App.closeAllDropdowns = closeAllDropdowns;
     window.App.renderNormalDropdown = renderNormalDropdown;
     window.App.renderAIDropdown = renderAIDropdown;
+    // 渲染语录卡片
+    function renderQuoteCard(quote) {
+        var quoteText = document.getElementById('quoteText');
+        var quoteAuthor = document.getElementById('quoteAuthor');
+        var quoteBody = document.getElementById('quoteBody');
+        var quoteLoading = document.getElementById('quoteLoading');
+        if (!quoteText || !quoteAuthor) return;
+
+        if (quoteLoading) quoteLoading.classList.remove('visible');
+        if (quoteBody) quoteBody.classList.add('visible');
+        quoteText.textContent = quote.text;
+        quoteAuthor.textContent = '—— ' + quote.aiName;
+    }
+
+    function showQuoteLoading() {
+        var quoteBody = document.getElementById('quoteBody');
+        var quoteLoading = document.getElementById('quoteLoading');
+        if (quoteBody) quoteBody.classList.remove('visible');
+        if (quoteLoading) quoteLoading.classList.add('visible');
+    }
+
+    // 收藏语录弹窗
+    function showSavedQuotesModal() {
+        var savedQuotes = window.App.getSavedQuotes ? window.App.getSavedQuotes() : [];
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.display = 'flex';
+        overlay.innerHTML = '<div class="modal-dialog" style="max-width:420px;padding:18px 20px;">' +
+            '<h3>🔖 收藏语录</h3>' +
+            '<div class="saved-quotes-list" style="max-height:60vh;overflow-y:auto;margin-top:12px;">' +
+            (savedQuotes.length === 0
+                ? '<div class="saved-quotes-empty">还没有收藏语录</div>'
+                : savedQuotes.map(function (q, i) {
+                    var savedDate = q.savedAt ? new Date(q.savedAt).toISOString().slice(0, 10).replace(/-/g, '.') : '';
+                    return '<div class="saved-quote-item">' +
+                        '<span class="saved-quote-text">' + window.App.escapeHtml(q.text) + '</span>' +
+                        '<div class="saved-quote-footer">' +
+                        '<span class="saved-quote-date">' + savedDate + '</span>' +
+                        '<span class="saved-quote-author">—— ' + window.App.escapeHtml(q.aiName) + '</span>' +
+                        '</div>' +
+                        '<button class="saved-quote-delete" data-idx="' + i + '">✕</button>' +
+                        '</div>';
+                }).join('')
+            ) +
+            '</div>' +
+            '<div class="btn-row" style="margin-top:14px;justify-content:flex-end;">' +
+            '<button class="btn btn-cancel" id="savedQuotesClose">关闭</button>' +
+            '</div></div>';
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#savedQuotesClose').onclick = function () { overlay.remove(); };
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+        overlay.querySelectorAll('.saved-quote-delete').forEach(function (btn) {
+            btn.onclick = function (e) {
+                e.stopPropagation();
+                var idx = parseInt(btn.dataset.idx);
+                if (window.App.removeSavedQuote) {
+                    window.App.removeSavedQuote(idx);
+                }
+                overlay.remove();
+                showSavedQuotesModal();
+            };
+        });
+    }
+
+    window.App.renderSidebarAIList = renderSidebarAIList;
+    window.App.renderQuoteCard = renderQuoteCard;
+    window.App.showQuoteLoading = showQuoteLoading;
+    window.App.showSavedQuotesModal = showSavedQuotesModal;
     window.App.renderTimeline = renderTimeline;
     window.App.renderCard = renderCard;
     window.App.observeMediaInContainer = observeMediaInContainer;

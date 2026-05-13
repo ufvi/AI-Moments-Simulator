@@ -157,6 +157,32 @@ window._fbPullAIConfig = async function () {
     }
 };
 
+window._fbUploadSavedQuotes = async function (savedQuotes) {
+    try {
+        await set(ref(db, `${NAMESPACE}/savedQuotes`), cleanForFirebase(savedQuotes));
+        console.log('☁️ 收藏语录已上传', new Date().toLocaleTimeString());
+        return true;
+    } catch (e) {
+        console.warn('收藏语录上传失败:', e);
+        return false;
+    }
+};
+
+window._fbPullSavedQuotes = async function () {
+    try {
+        const snap = await get(ref(db, `${NAMESPACE}/savedQuotes`));
+        if (snap.exists()) {
+            var val = snap.val();
+            console.log('☁️ 收藏语录已拉取');
+            return val;
+        }
+        return [];
+    } catch (e) {
+        console.warn('收藏语录拉取失败:', e);
+        return [];
+    }
+};
+
 window._fbSyncImmediate = async function (accounts, posts) {
     try {
         clearTimeout(syncTimer);

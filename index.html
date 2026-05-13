@@ -5,6 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>朋友圈 - Moments</title>
+    <meta name="description" content="分享你的生活点滴">
+    <meta name="theme-color" content="#07c160">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Moments">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <script src="https://cdn.bootcdn.net/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous">
     </script>
     <link rel="stylesheet" href="styles.css">
@@ -24,8 +31,41 @@
     <div class="image-preview-tooltip" id="imagePreviewTooltip" style="display:none;">
         <img src="" alt="预览" id="imagePreviewImg">
     </div>
-    <script src="https://fastly.jsdelivr.net/gh/stevenjoezhang/live2d-widget/autoload.js"></script>
     <div class="app-container">
+        <div class="desktop-topbar" id="desktopTopbar">
+          <div class="topbar-left">
+            <span class="topbar-namespace" id="topbarNamespace"></span>
+          </div>
+          <div class="desktop-search">
+            <span class="desktop-search-icon">🔍</span>
+            <input
+              type="text"
+              id="desktopSearchInput"
+              class="desktop-search-input"
+              placeholder="搜索动态或发布者..."
+            />
+            <button class="desktop-search-clear" id="desktopSearchClear" style="display:none;">✕</button>
+          </div>
+          <div class="topbar-right">
+            <button class="desktop-theme-btn" id="desktopThemeBtn">🌙 夜间模式</button>
+          </div>
+        </div>
+        <aside class="sidebar" id="sidebar">
+          <div class="sidebar-user" id="sidebarUserArea">
+          </div>
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-item active" data-action="publish">✏️ 发布</div>
+            <div class="sidebar-nav-item" data-action="ai-post">✨ AI 发帖</div>
+            <div class="sidebar-nav-item" data-action="ghost-writer">✍️ 代写</div>
+            <div class="sidebar-nav-item" data-action="ai-settings">🤖 AI API KEY 配置</div>
+            <div class="sidebar-nav-item" data-action="export">📤 导出备份</div>
+            <div class="sidebar-nav-item" data-action="import">📥 导入恢复</div>
+            <div class="sidebar-nav-item" data-action="upload-cloud">☁️ 上传到云端</div>
+            <div class="sidebar-nav-item" data-action="saved-quotes">🔖 收藏语录</div>
+            <div class="sidebar-nav-item" data-action="navigate">🧭 导航</div>
+          </nav>
+        </aside>
+        <main class="main-content">
         <div class="namespace-banner" id="namespaceBanner" style="display:none;"></div>
         <header class="header">
             <div class="header-left" id="headerUserArea" title="点击切换普通账号">
@@ -49,10 +89,9 @@
                     <div class="settings-dropdown-item" data-action="ghost-writer">✍️ 代写</div>
                     <div class="settings-dropdown-item" data-action="export">📤 导出备份</div>
                     <div class="settings-dropdown-item" data-action="import">📥 导入恢复</div>
-                    <div class="settings-dropdown-item" data-action="refresh">🔄 刷新</div>
                     <div class="settings-dropdown-item" data-action="upload-cloud">☁️ 上传到云端</div>
-                    <div class="settings-dropdown-item" data-action="force-pull-cloud">⬇️ 强制从云端拉取</div>
-                    <div class="settings-dropdown-item" data-action="about">ℹ️ 关于</div>
+                    <div class="settings-dropdown-item" data-action="navigate">🧭 导航</div>
+                    <div class="settings-dropdown-item" data-action="saved-quotes">🔖 收藏语录</div>
                 </div>
             </div>
             <div class="search-bar" id="searchBar" style="display:none;">
@@ -101,6 +140,36 @@
         <div class="timeline" id="timeline"></div>
         <div class="loader-indicator" id="loaderIndicator">加载更多...</div>
         <button class="btn-back-to-top" id="btnBackToTop" title="回到顶部">⬆</button>
+        </main>
+        <aside class="right-sidebar" id="rightSidebar">
+          <div class="right-sidebar-section">
+            <div class="right-sidebar-title">
+              <span>当前 AI 账号</span>
+            </div>
+            <div class="ai-account-list-wrapper">
+              <div class="ai-account-list" id="sidebarAIList">
+              </div>
+            </div>
+          </div>
+          <div class="right-sidebar-section" id="quoteSection">
+            <div class="quote-card" id="quoteCard">
+              <div class="quote-header">
+                <span class="quote-title">AI 语录</span>
+                <div class="quote-actions">
+                  <button class="quote-btn" id="btnQuoteRefresh" title="换一条">🔄</button>
+                  <button class="quote-btn quote-fav-btn" id="btnQuoteFav" title="收藏">🤍</button>
+                </div>
+              </div>
+              <div class="quote-body" id="quoteBody">
+                <span class="quote-text" id="quoteText"></span>
+                <span class="quote-author" id="quoteAuthor"></span>
+              </div>
+              <div class="quote-loading" id="quoteLoading" style="display:none;">
+                <span class="quote-dot">●</span><span class="quote-dot">●</span><span class="quote-dot">●</span>
+              </div>
+            </div>
+          </div>
+        </aside>
     </div>
 
     <div class="modal-overlay" id="imageModal" style="display:none;">
@@ -119,6 +188,11 @@
         </div>
     </div>
 
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js');
+        }
+    </script>
 </body>
 
 </html>
