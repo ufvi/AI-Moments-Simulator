@@ -345,6 +345,7 @@
         window.App.updatePublishBtn();
         document.querySelector('#btnCancelEdit').style.display = '';
         document.querySelector('#btnPublish').textContent = '保存修改';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         document.querySelector('#publishText').focus();
 
         window.App.renderPostUserSwitcher();

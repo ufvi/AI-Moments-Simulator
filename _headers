@@ -1,6 +1,0 @@
-/manifest.json
-  Content-Type: application/manifest+json
-
-/sw.js
-  Service-Worker-Allowed: /
-  Content-Type: text/javascript

@@ -6,12 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>朋友圈 - Moments</title>
     <meta name="description" content="分享你的生活点滴">
-    <meta name="theme-color" content="#07c160">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Moments">
-    <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <script src="https://cdn.bootcdn.net/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous">
     </script>
     <link rel="stylesheet" href="styles.css">
@@ -101,6 +95,8 @@
         </header>
         <div class="account-dropdown normal-dropdown" id="normalDropdown" style="display:none;"></div>
         <div class="account-dropdown ai-dropdown" id="aiDropdown" style="display:none;"></div>
+        <!-- 移动端键盘触发（iOS 要求已存在于 DOM 中才能弹出键盘） -->
+        <input id="keyboardTrigger" aria-hidden="true" style="position:fixed;opacity:0;pointer-events:none;height:1px;width:1px;font-size:16px;">
         <!-- AI 思考中提示条 -->
         <div class="ai-thinking-bar" id="aiThinkingBar">
             <div class="thinking-avatar" id="thinkingAvatar">🤖</div>
@@ -188,11 +184,6 @@
         </div>
     </div>
 
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js');
-        }
-    </script>
 </body>
 
 </html>

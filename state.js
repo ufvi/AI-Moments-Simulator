@@ -15,7 +15,7 @@
     var accounts = [];
     var currentId = localStorage.getItem(KEY_CUR);
     var posts = [];
-    var AI_DEFAULT_PRESET = { id: 'preset_default', name: '默认方案', endpoint: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-v4-pro', timeout: 15, vision: false };
+    var AI_DEFAULT_PRESET = { id: 'preset_default', name: '默认方案', endpoint: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-v4-pro', timeout: 15, vision: false, thinking: false };
 
     function loadAIPresets() {
         var presets = getJSON(KEY_AI_PRESETS) || [];
@@ -58,6 +58,17 @@
         // persist 默认 false：切换时仅更新内存引用，不立即写磁盘
         // 调用方在 saveFormToPreset 之后再显式调用 saveAIPresets() 落盘
         if (persist) saveAIPresets();
+    }
+    function normalizeAIPresets() {
+        var defaults = window.App.AI_DEFAULT_PRESET;
+        var presets = window.App.aiPresets;
+        if (!presets || !presets.length) return;
+        for (var i = 0; i < presets.length; i++) {
+            for (var key in defaults) {
+                if (!Object.prototype.hasOwnProperty.call(defaults, key)) continue;
+                if (!(key in presets[i])) presets[i][key] = defaults[key];
+            }
+        }
     }
     function deleteAIPreset(id) {
         var presets = window.App.aiPresets;
@@ -112,6 +123,7 @@
     window.App.savePosts = savePosts;
     window.App.saveAIPresets = saveAIPresets;
     window.App.switchAIPreset = switchAIPreset;
+    window.App.normalizeAIPresets = normalizeAIPresets;
     window.App.deleteAIPreset = deleteAIPreset;
     window.App.getAcc = getAcc;
     window.App.getCurAcc = getCurAcc;

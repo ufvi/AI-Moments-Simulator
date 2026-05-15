@@ -71,8 +71,7 @@
         const cancelBtn = overlay.querySelector('#aiCommentModalCancel-' + postId);
         const sendBtn = overlay.querySelector('#aiCommentModalSend-' + postId);
 
-        textarea.focus();
-        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        // 不自动聚焦 textarea，避免移动端弹键盘
 
         const close = () => overlay.remove();
 
@@ -119,10 +118,10 @@
 
                 let body;
                 if (isVolcengine) {
-                    body = { model: window.App.aiConfig.model, input: messages, thinking: { type: 'disabled' } };
+                    body = { model: window.App.aiConfig.model, input: messages, thinking: { type: window.App.aiConfig.thinking ? 'enabled' : 'disabled' } };
                 } else {
-                    body = { model: window.App.aiConfig.model, messages, max_tokens: 150, temperature: 0.8 };
-                    if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
+                    body = { model: window.App.aiConfig.model, messages, max_tokens: 2000, temperature: 0.8 };
+                    if (!window.App.aiConfig.thinking && window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
                 }
 
                 const res = await fetch(url, {
@@ -355,12 +354,12 @@
                 // 火山引擎 responses API：system prompt 已塞入第一条 user 消息，跳过 system 消息
                 url = base + '/responses';
                 const input = messages.filter(m => m.role !== 'system').map(m => { const item = { role: m.role, content: m.content }; if (m.status) item.status = m.status; return item; });
-                body = { model: window.App.aiConfig.model, input, thinking: { type: 'disabled' } };
+                body = { model: window.App.aiConfig.model, input, thinking: { type: window.App.aiConfig.thinking ? 'enabled' : 'disabled' } };
             } else {
                 // OpenAI-compatible chat/completions
                 url = base + '/chat/completions';
-                body = { model: window.App.aiConfig.model, messages, max_tokens: 150, temperature: 0.8 };
-                if (window.App.aiConfig.model?.includes('deepseek-v4') && imageUrls.length === 0) body.thinking = { type: 'disabled' };
+                body = { model: window.App.aiConfig.model, messages, max_tokens: 2000, temperature: 0.8 };
+                if (!window.App.aiConfig.thinking && window.App.aiConfig.model?.includes('deepseek-v4') && imageUrls.length === 0) body.thinking = { type: 'disabled' };
             }
             const res = await fetch(url, {
                 method: 'POST',
@@ -415,7 +414,8 @@
             p.apiKey = overlay.querySelector('#aiApiKey').value.trim();
             p.model = overlay.querySelector('#aiModel').value.trim();
             p.timeout = parseInt(overlay.querySelector('#aiTimeout').value) || 30;
-            p.vision = overlay.querySelector('#aiVision').checked;
+            p.vision = overlay.querySelector('#toggleRowVision .toggle-switch').classList.contains('active');
+            p.thinking = overlay.querySelector('#toggleRowThinking .toggle-switch').classList.contains('active');
         }
 
         function loadPresetToForm(pid) {
@@ -426,7 +426,10 @@
             overlay.querySelector('#aiApiKey').value = p.apiKey || '';
             overlay.querySelector('#aiModel').value = p.model || '';
             overlay.querySelector('#aiTimeout').value = p.timeout || 30;
-            overlay.querySelector('#aiVision').checked = p.vision !== false;
+            var visionToggle = overlay.querySelector('#toggleRowVision .toggle-switch');
+            visionToggle.classList.toggle('active', p.vision !== false);
+            var thinkingToggle = overlay.querySelector('#toggleRowThinking .toggle-switch');
+            thinkingToggle.classList.toggle('active', p.thinking === true);
         }
 
         function refreshSelector() {
@@ -460,9 +463,14 @@
             '<input type="text" id="aiModel" value="' + window.App.escapeHtml(window.App.aiConfig.model || '') + '" placeholder="deepseek-v4-pro" style="margin-top:4px;">' +
             '<label>请求超时（秒）</label>' +
             '<input type="number" id="aiTimeout" value="' + (window.App.aiConfig.timeout || 30) + '" min="1" max="120" style="margin-top:4px;">' +
-            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;">' +
-            '<input type="checkbox" id="aiVision"' + (window.App.aiConfig.vision !== false ? ' checked' : '') + '> 支持图片（视觉/多模态）' +
-            '</label>' +
+            '<div class="settings-toggle-row" id="toggleRowVision">' +
+            '<span>支持图片（视觉/多模态）</span>' +
+            '<div class="toggle-switch' + (window.App.aiConfig.vision !== false ? ' active' : '') + '"></div>' +
+            '</div>' +
+            '<div class="settings-toggle-row" id="toggleRowThinking">' +
+            '<span>开启思考模式（深度推理）</span>' +
+            '<div class="toggle-switch' + (window.App.aiConfig.thinking ? ' active' : '') + '"></div>' +
+            '</div>' +
             '<div class="btn-row" style="margin-bottom:8px;">' +
             '<button class="btn btn-cancel" id="aiCloudUpload" style="flex:1;">☁️ 上传到云端</button>' +
             '<button class="btn btn-cancel" id="aiCloudPull" style="flex:1;">⬇️ 从云端拉取</button>' +
@@ -472,6 +480,14 @@
             '<button class="btn btn-save" id="aiSettingsSave">保存</button>' +
             '</div></div>';
         document.body.appendChild(overlay);
+
+        // Toggle 开关点击
+        overlay.querySelector('#toggleRowVision').addEventListener('click', function () {
+            this.querySelector('.toggle-switch').classList.toggle('active');
+        });
+        overlay.querySelector('#toggleRowThinking').addEventListener('click', function () {
+            this.querySelector('.toggle-switch').classList.toggle('active');
+        });
 
         var selector = overlay.querySelector('#presetSelector');
         // Bug3 修复：确保 selector 显示值与 activePresetId 一致
@@ -509,7 +525,8 @@
                 apiKey: '',
                 model: 'deepseek-v4-pro',
                 timeout: 15,
-                vision: false
+                vision: false,
+                thinking: false
             };
             window.App.aiPresets.push(newPreset);
             window.App.activePresetId = newPreset.id;
@@ -527,6 +544,10 @@
                 window.App.switchAIPreset(selector.value, true); // 落盘
             } else {
                 window.App.saveAIPresets();
+            }
+            // 自动上传到云端
+            if (window._fbUploadAIConfig) {
+                window._fbUploadAIConfig({ presets: window.App.aiPresets, activePresetId: window.App.activePresetId });
             }
             overlay.remove();
             window.App.renderHeader();
@@ -711,10 +732,10 @@
                     if (sysContent && input.length > 0) {
                         input[0].content.unshift({ type: 'input_text', text: sysContent + '\n\n' });
                     }
-                    body = { model: window.App.aiConfig.model, input, thinking: { type: 'disabled' } };
+                    body = { model: window.App.aiConfig.model, input, thinking: { type: window.App.aiConfig.thinking ? 'enabled' : 'disabled' } };
                 } else {
-                    body = { model: window.App.aiConfig.model, messages: situationMessages, max_tokens: 60, temperature: 0.95 };
-                    if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
+                    body = { model: window.App.aiConfig.model, messages: situationMessages, max_tokens: 2000, temperature: 0.95 };
+                    if (!window.App.aiConfig.thinking && window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
                 }
                 const res = await fetch(url, {
                     method: 'POST',
@@ -790,11 +811,11 @@
                             firstUser.content = [{ type: 'input_text', text: sysMsgContent + '\n\n' + (firstUser.content || '') }];
                         }
                     }
-                    body = { model: window.App.aiConfig.model, input, thinking: { type: 'disabled' } };
+                    body = { model: window.App.aiConfig.model, input, thinking: { type: window.App.aiConfig.thinking ? 'enabled' : 'disabled' } };
                 } else {
                     callUrl = base + '/chat/completions';
                     body = { model: window.App.aiConfig.model, messages, max_tokens: maxTokens, temperature: 0.95 };
-                    if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
+                    if (!window.App.aiConfig.thinking && window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
                 }
                 const res = await fetch(callUrl, {
                     method: 'POST',
@@ -844,7 +865,7 @@
                     { role: 'system', content: '你是一个情境生成助手。根据要求，生成一句具体的生活情境，用于驱动发朋友圈，不要解释，只输出情境本身。' },
                     { role: 'user', content: userContent }
                 ];
-                situation = await callAPI(situationMessages, 60);
+                situation = await callAPI(situationMessages, 2000);
             }
 
             // ── 第二次：并发生成 N 条帖子 ────────────────────────
@@ -859,7 +880,7 @@
             if ($thinkingText) $thinkingText.innerHTML = `<b>${window.App.escapeHtml(aiAcc.nickname)}</b> 正在生成 ${count} 条候选<span class="thinking-dots"></span>`;
 
             const results = await Promise.allSettled(
-                Array.from({ length: count }, () => callAPI(makePostMessages(), 200))
+                Array.from({ length: count }, () => callAPI(makePostMessages(), 2000))
             );
             const drafts = results.filter(r => r.status === 'fulfilled').map(r => r.value);
             if (!drafts.length) throw new Error('所有版本均生成失败');
@@ -1100,11 +1121,11 @@
                             firstUser.content = [{ type: 'input_text', text: sysMsgContent + '\n\n' + (firstUser.content || '') }];
                         }
                     }
-                    body = { model: window.App.aiConfig.model, input, thinking: { type: 'disabled' } };
+                    body = { model: window.App.aiConfig.model, input, thinking: { type: window.App.aiConfig.thinking ? 'enabled' : 'disabled' } };
                 } else {
                     callUrl = base + '/chat/completions';
                     body = { model: window.App.aiConfig.model, messages, max_tokens: maxTokens, temperature: 0.95 };
-                    if (window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
+                    if (!window.App.aiConfig.thinking && window.App.aiConfig.model?.includes('deepseek-v4')) body.thinking = { type: 'disabled' };
                 }
                 const res = await fetch(callUrl, {
                     method: 'POST',
@@ -1138,7 +1159,7 @@
                         { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化，不超过150字。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
                         { role: 'user', content: `情境：${ghostInput}` }
                     ];
-                    return callAPI(msgs, 200).then(text => ({ text, aiAcc }));
+                    return callAPI(msgs, 2000).then(text => ({ text, aiAcc }));
                 })
             );
 
@@ -1163,7 +1184,7 @@
                         { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化，不超过150字。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
                         { role: 'user', content: `情境：${ghostInput}` }
                     ];
-                    return await callAPI(msgs, 200);
+                    return await callAPI(msgs, 2000);
                 }
             );
         } catch (e) {
@@ -1356,10 +1377,10 @@
 
             var body;
             if (_isVolcQ) {
-                body = { model: window.App.aiConfig.model, input: messages, thinking: { type: 'disabled' } };
+                body = { model: window.App.aiConfig.model, input: messages, thinking: { type: window.App.aiConfig.thinking ? 'enabled' : 'disabled' } };
             } else {
-                body = { model: window.App.aiConfig.model, messages: messages, max_tokens: 80, temperature: 0.95 };
-                if (window.App.aiConfig.model.indexOf('deepseek-v4') !== -1) body.thinking = { type: 'disabled' };
+                body = { model: window.App.aiConfig.model, messages: messages, max_tokens: 2000, temperature: 0.95 };
+                if (!window.App.aiConfig.thinking && window.App.aiConfig.model.indexOf('deepseek-v4') !== -1) body.thinking = { type: 'disabled' };
             }
 
             var res = await fetch(url, {

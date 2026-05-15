@@ -575,6 +575,7 @@
             if (cloudData.aiConfig && cloudData.aiConfig.presets && cloudData.aiConfig.presets.length) {
                 var curPresetId2 = window.App.activePresetId;
                 window.App.aiPresets = cloudData.aiConfig.presets;
+                window.App.normalizeAIPresets();
                 window.App.activePresetId = (curPresetId2 && window.App.aiPresets.find(function (p) { return p.id === curPresetId2; })) ? curPresetId2 : (cloudData.aiConfig.activePresetId || window.App.aiPresets[0].id);
                 window.App.aiConfig = window.App.aiPresets.find(function (p) { return p.id === window.App.activePresetId; }) || window.App.aiPresets[0];
                 window.App.saveAIPresets();
@@ -681,7 +682,9 @@
                     var rect = e.currentTarget.getBoundingClientRect();
                     var dropdownWidth = $aiDropdown.offsetWidth || 220;
                     $aiDropdown.style.top = (rect.bottom + 4) + 'px';
-                    $aiDropdown.style.left = (rect.left + rect.width / 2 - dropdownWidth / 2) + 'px';
+                    var left = rect.left + rect.width / 2 - dropdownWidth / 2;
+                    left = Math.max(8, Math.min(left, window.innerWidth - dropdownWidth - 38));
+                    $aiDropdown.style.left = left + 'px';
                     $aiDropdown.style.display = 'block';
                     window.App.renderAIDropdown();
                 }
@@ -725,7 +728,9 @@
                     var rect = e.currentTarget.getBoundingClientRect();
                     var dropdownWidth = $aiDropdown.offsetWidth || 220;
                     $aiDropdown.style.top = (rect.bottom + 4) + 'px';
-                    $aiDropdown.style.left = (rect.left + rect.width / 2 - dropdownWidth / 2) + 'px';
+                    var left = rect.left + rect.width / 2 - dropdownWidth / 2;
+                    left = Math.max(8, Math.min(left, window.innerWidth - dropdownWidth - 8));
+                    $aiDropdown.style.left = left + 'px';
                     $aiDropdown.style.display = 'block';
                     window.App.renderAIDropdown();
                 }
@@ -748,9 +753,9 @@
 
                 switch (action) {
                     case 'publish':
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
                         var pubText = document.getElementById('publishText');
                         if (pubText) {
-                            pubText.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             pubText.focus();
                         }
                         break;
@@ -796,7 +801,7 @@
                         manualUploadToCloud();
                         break;
                     case 'navigate':
-                        window.location.href = '/navigate.html';
+                        window.open('/navigate.html', '_blank');
                         break;
                     case 'saved-quotes':
                         window.App.showSavedQuotesModal();
@@ -870,7 +875,7 @@
                         manualUploadToCloud();
                         break;
                     case 'navigate':
-                        window.location.href = '/navigate.html';
+                        window.open('/navigate.html', '_blank');
                         break;
                     case 'about':
                         window.location.href = 'about.html';
@@ -1228,14 +1233,14 @@
             window.App.showToast('⚠️ 加载数据失败，请刷新页面');
         }
 
-        // 自动生成语录
+        // 自动生成语录（仅桌面模式，移动端 ≤768px 时 UI 被 CSS 隐藏）
         var aiAccs = window.App.accounts.filter(function (a) { return a.isAI; });
         var quoteSection = document.getElementById('quoteSection');
         if (quoteSection) {
-            if (aiAccs.length > 0) {
+            if (aiAccs.length > 0 && window.innerWidth > 768) {
                 quoteSection.classList.remove('no-ai');
                 window.App.refreshQuote();
-            } else {
+            } else if (aiAccs.length === 0) {
                 quoteSection.classList.add('no-ai');
             }
         }
@@ -1334,6 +1339,7 @@
                             if (cloudData.aiConfig && cloudData.aiConfig.presets && cloudData.aiConfig.presets.length) {
                                 var curPresetId = window.App.activePresetId;
                                 window.App.aiPresets = cloudData.aiConfig.presets;
+                                window.App.normalizeAIPresets();
                                 window.App.activePresetId = (curPresetId && window.App.aiPresets.find(function (p) { return p.id === curPresetId; })) ? curPresetId : (cloudData.aiConfig.activePresetId || window.App.aiPresets[0].id);
                                 window.App.aiConfig = window.App.aiPresets.find(function (p) { return p.id === window.App.activePresetId; }) || window.App.aiPresets[0];
                                 window.App.saveAIPresets();
@@ -1403,6 +1409,7 @@
                 }
             );
         }
+
     }
 
     window.App = window.App || {};

@@ -188,6 +188,9 @@
         }
         window.App.editingPostUserId = null;
         delete window.App._pendingGhost;
+        // 清除发布者选择器
+        var switcher = document.getElementById('postUserSwitcher');
+        if (switcher) switcher.remove();
         for (var k = 0; k < window.App.publishFiles.length; k++) {
             if (!window.App.publishFiles[k].mediaId) URL.revokeObjectURL(window.App.publishFiles[k].previewUrl);
         }

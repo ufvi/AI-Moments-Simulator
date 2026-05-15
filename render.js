@@ -138,7 +138,14 @@
                 }
                 window.App.activeAIId = item.dataset.aiId;
                 localStorage.setItem(window.App.KEY_ACTIVE_AI, window.App.activeAIId);
-                window.App.showToastBottom('🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
+                // 手动选择AI账号时，自动关闭随机AI模式
+                if (window.App.randomAIMode) {
+                    window.App.randomAIMode = false;
+                    localStorage.setItem(window.App.KEY_RANDOM_AI, 'false');
+                    window.App.showToastBottom('🎲 随机AI模式已关闭 · 🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
+                } else {
+                    window.App.showToastBottom('🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
+                }
                 renderHeader();
                 renderAIDropdown();
             });
@@ -256,6 +263,16 @@
                 if (e.target.dataset.action === 'edit-ai') { window.App.editAccount(e.target.dataset.accountId); return; }
                 window.App.activeAIId = item.dataset.aiId;
                 localStorage.setItem(window.App.KEY_ACTIVE_AI, window.App.activeAIId);
+                // 手动选择AI账号时，自动关闭随机AI模式
+                if (window.App.randomAIMode) {
+                    window.App.randomAIMode = false;
+                    localStorage.setItem(window.App.KEY_RANDOM_AI, 'false');
+                    window.App.showToastBottom('🎲 随机AI模式已关闭 · 🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
+                    $aiDropdown.style.display = 'none';
+                    renderAIDropdown();
+                    renderHeader();
+                    return;
+                }
                 $aiDropdown.style.display = 'none';
                 window.App.showToastBottom('🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
                 renderAIDropdown();
@@ -429,10 +446,12 @@
         $timeline.querySelectorAll('[data-action="copy-post"]').forEach(b => b.onclick = () => window.App.copyPost(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="like"]').forEach(b => b.onclick = () => window.App.toggleLike(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="focus-comment"]').forEach(b => b.onclick = () => {
-            const inp = document.getElementById('commentInput-' + b.dataset.postId);
-            if (inp) {
-                inp.scrollIntoView({ block: 'center' });
-                inp.focus({ preventScroll: true });
+            const isMobile = window.matchMedia('not (pointer: fine)').matches;
+            if (isMobile) {
+                showMobileCommentEditor(b.dataset.postId);
+            } else {
+                const inp = document.getElementById('commentInput-' + b.dataset.postId);
+                if (inp) inp.focus();
             }
         });
         $timeline.querySelectorAll('[data-action="submit-comment"]').forEach(b => b.onclick = () => window.App.submitComment(b.dataset.postId));
@@ -539,8 +558,149 @@
         post.comments.push({ id: 'cmt_' + Date.now(), userId: window.App.currentId, text, timestamp: Date.now() });
         window.App.savePosts();
         updateCard(id);
-        const newInp = document.getElementById('commentInput-' + id);
-        if (newInp) newInp.focus({ preventScroll: true });
+        // 移动端不自动聚焦，避免弹出键盘
+        if (!window.matchMedia('not (pointer: fine)').matches) {
+            const newInp = document.getElementById('commentInput-' + id);
+            if (newInp) newInp.focus({ preventScroll: true });
+        }
+    }
+
+    // 移动端：阻止评论输入框获得焦点（改用底部编辑面板）
+    // 移动端：发动态输入框聚焦时自动滚动到可视区域
+    if (window.matchMedia('not (pointer: fine)').matches) {
+        document.addEventListener('focusin', function (e) {
+            if (e.target && e.target.id) {
+                if (e.target.id.startsWith('commentInput-')) {
+                    e.target.blur();
+                    var postId = e.target.id.replace('commentInput-', '');
+                    if (!document.querySelector('.mobile-comment-editor')) {
+                        showMobileCommentEditor(postId);
+                    }
+                } else if (e.target.id === 'publishText') {
+                    // 延迟等待键盘弹出后再滚动，确保目标位置准确
+                    setTimeout(function () {
+                        e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 300);
+                }
+            }
+        });
+    }
+
+    // 移动端：锁定/解锁 body 滚动
+    var _lockedScrollY = -1;
+    function lockBodyScroll() {
+        _lockedScrollY = window.scrollY;
+        document.body.style.position = 'fixed';
+        document.body.style.top = '-' + _lockedScrollY + 'px';
+        document.body.style.left = '0';
+        document.body.style.right = '0';
+    }
+    function unlockBodyScroll() {
+        if (_lockedScrollY >= 0) {
+            var sy = _lockedScrollY;
+            _lockedScrollY = -1;
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            window.scrollTo(0, sy);
+        }
+    }
+
+    // 关闭移动端编辑面板
+    function closeMobileEditor(ed) {
+        unlockBodyScroll();
+        if (ed) ed.remove();
+    }
+
+    // 移动端：底部弹出评论编辑面板（紧贴输入法）
+    function showMobileCommentEditor(postId) {
+        const origInput = document.getElementById('commentInput-' + postId);
+        const existingText = origInput ? origInput.value : '';
+
+        const old = document.querySelector('.mobile-comment-editor');
+        if (old) old._close();
+
+        lockBodyScroll();
+
+        const mask = document.createElement('div');
+        mask.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.25);';
+        document.body.appendChild(mask);
+
+        const editor = document.createElement('div');
+        editor.className = 'mobile-comment-editor';
+        editor.style.cssText = [
+            'position:fixed',
+            'left:0',
+            'right:0',
+            'bottom:0',
+            'z-index:9999',
+            'background:var(--card-bg,#fff)',
+            'padding:10px 14px',
+            'display:flex',
+            'flex-direction:column',
+            'gap:8px',
+        ].join(';');
+
+        editor.innerHTML =
+            '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<button id="mobileCommentCancel" style="font-size:14px;color:var(--text-light,#888);background:none;border:none;padding:4px 0;cursor:pointer;">取消</button>' +
+            '<button id="mobileCommentEmoji" style="font-size:18px;background:none;border:none;padding:4px;cursor:pointer;">😀</button>' +
+            '<button id="mobileCommentSend" style="margin-left:auto;background:var(--ai-purple,#7c5cfc);color:#fff;border:none;border-radius:18px;padding:6px 18px;font-size:14px;cursor:pointer;">发送</button>' +
+            '</div>' +
+            '<textarea id="mobileCommentInput" placeholder="写评论..." maxlength="500" ' +
+            'style="width:100%;min-height:72px;max-height:140px;resize:none;border:none;outline:none;' +
+            'background:transparent;font-size:16px;line-height:1.5;box-sizing:border-box;padding:0;">' +
+            window.App.escapeHtml(existingText) +
+            '</textarea>';
+
+        document.body.appendChild(editor);
+
+        const textarea = editor.querySelector('#mobileCommentInput');
+
+        function close() {
+            mask.remove();
+            editor.remove();
+            unlockBodyScroll();
+        }
+        editor._close = close;
+
+        mask.addEventListener('click', function () {
+            if (origInput) origInput.value = textarea.value;
+            close();
+        });
+
+        var iosTrigger = document.getElementById('keyboardTrigger');
+        if (iosTrigger) iosTrigger.focus();
+        setTimeout(function () {
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        }, 50);
+
+        editor.querySelector('#mobileCommentSend').onclick = function () {
+            const text = textarea.value.trim();
+            if (!text) return;
+            if (origInput) origInput.value = text;
+            close();
+            window.App.submitComment(postId);
+        };
+
+        editor.querySelector('#mobileCommentCancel').onclick = function () {
+            if (origInput) origInput.value = textarea.value;
+            close();
+        };
+
+        editor.querySelector('#mobileCommentEmoji').onclick = function () {
+            var emojis = ['😀','😂','😍','🥰','😎','🤩','😇','🤗','😋','😜','🤔','😌','😴','🥳','👍',
+                '👏','🙌','💪','🎉','🌟','🔥','💖','🤣','🥺','😭','😱','😏','🫡','🥱','😈',
+                '👻','💀','👋','🤝','👌','🤏','✌️','🤞','🫰','👊','🙏','💯','✨','💥',
+                '🌈','💦','💤','🍉','🍓','🍒','🌸','🌺','🌙','⚡','❤️'];
+            var emoji = emojis[Math.floor(Math.random() * emojis.length)];
+            var s = textarea.selectionStart, e2 = textarea.selectionEnd;
+            textarea.value = textarea.value.slice(0, s) + emoji + textarea.value.slice(e2);
+            textarea.selectionStart = textarea.selectionEnd = s + emoji.length;
+            textarea.focus();
+        };
     }
 
     function deleteComment(postId, commentId) {
