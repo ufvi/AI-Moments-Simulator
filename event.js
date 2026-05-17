@@ -372,7 +372,7 @@
         window.App.currentId = data.currentId || (window.App.accounts.find(function (a) { return !a.isAI; }) || window.App.accounts[0] || {}).id || "";
         if (data.aiPresets && data.aiPresets.length) { var curPresetId3 = window.App.activePresetId; window.App.aiPresets = data.aiPresets; window.App.activePresetId = (curPresetId3 && window.App.aiPresets.find(function (p) { return p.id === curPresetId3; })) ? curPresetId3 : (data.activePresetId || data.aiPresets[0].id); window.App.aiConfig = window.App.aiPresets.find(function (p) { return p.id === window.App.activePresetId; }) || window.App.aiPresets[0]; }
         window.App.activeAIId = data.activeAIId || null;
-        window.App.randomAIMode = !!data.randomAIMode;
+        // randomAIMode 是本地偏好，不从云端覆盖（localStorage 才是最新值）
         if (data.savedQuotes && Array.isArray(data.savedQuotes)) {
             localStorage.setItem(window.App.NS + 'saved_quotes', JSON.stringify(data.savedQuotes));
         }
@@ -598,7 +598,10 @@
             localStorage.setItem(window.App.NS + '_localDataTs', String(cloudTs));
 
             window.App.hideProgress();
+            var _savedRandomAI = window.App.randomAIMode;
             renderUI();
+            window.App.randomAIMode = _savedRandomAI;
+            localStorage.setItem(window.App.KEY_RANDOM_AI, _savedRandomAI ? 'true' : 'false');
             window.App.showToast('✅ 已强制从云端拉取最新数据');
         } catch (e) {
             window.App.hideProgress();
@@ -762,13 +765,12 @@
                     case 'toggle-theme':
                         document.body.classList.toggle('dark-mode');
                         var dark = document.body.classList.contains('dark-mode');
-                        localStorage.setItem(window.App.KEY_THEME, dark ? 'dark' : 'light');
-                        window.App.showToast(dark ? '🌙 已切换夜间模式' : '☀️ 已切换日间模式');
+                        window.App.showToast(dark ? '🌙 已切换深色模式' : '☀️ 已切换浅色模式');
                         var themeItem = $('#settingsThemeItem');
-                        if (themeItem) themeItem.textContent = dark ? '☀️ 切换日间模式' : '🌙 切换夜间模式';
-                        if (item) item.textContent = dark ? '☀️ 日间模式' : '🌙 夜间模式';
+                        if (themeItem) themeItem.textContent = dark ? '☀️ 切换浅色模式' : '🌙 切换深色模式';
+                        if (item) item.textContent = dark ? '☀️ 浅色模式' : '🌙 深色模式';
                         var dtb = document.getElementById('desktopThemeBtn');
-                        if (dtb) dtb.textContent = dark ? '☀️ 白天模式' : '🌙 夜间模式';
+                        if (dtb) dtb.textContent = dark ? '☀️ 浅色模式' : '🌙 深色模式';
                         break;
                     case 'search':
                         if (window.innerWidth > 768) {
@@ -801,7 +803,7 @@
                         manualUploadToCloud();
                         break;
                     case 'navigate':
-                        window.open('/navigate.html', '_blank');
+                        window.open('navigate.html', '_blank');
                         break;
                     case 'saved-quotes':
                         window.App.showSavedQuotesModal();
@@ -822,9 +824,9 @@
                     $settingsDropdown.style.display = 'block';
                     var isDark = document.body.classList.contains('dark-mode');
                     var themeItem = $('#settingsThemeItem');
-                    if (themeItem) themeItem.textContent = isDark ? '☀️ 切换日间模式' : '🌙 切换夜间模式';
+                    if (themeItem) themeItem.textContent = isDark ? '☀️ 切换浅色模式' : '🌙 切换深色模式';
                     var dtb = document.getElementById('desktopThemeBtn');
-                    if (dtb) dtb.textContent = isDark ? '☀️ 白天模式' : '🌙 夜间模式';
+                    if (dtb) dtb.textContent = isDark ? '☀️ 浅色模式' : '🌙 深色模式';
                 }
             };
         }
@@ -842,12 +844,11 @@
                     case 'toggle-theme':
                         document.body.classList.toggle('dark-mode');
                         var dark3 = document.body.classList.contains('dark-mode');
-                        localStorage.setItem(window.App.KEY_THEME, dark3 ? 'dark' : 'light');
-                        window.App.showToast(dark3 ? '🌙 已切换夜间模式' : '☀️ 已切换日间模式');
+                        window.App.showToast(dark3 ? '🌙 已切换深色模式' : '☀️ 已切换浅色模式');
                         var themeItem3 = $('#settingsThemeItem');
-                        if (themeItem3) themeItem3.textContent = dark3 ? '☀️ 切换日间模式' : '🌙 切换夜间模式';
+                        if (themeItem3) themeItem3.textContent = dark3 ? '☀️ 切换浅色模式' : '🌙 切换深色模式';
                         var dtb = document.getElementById('desktopThemeBtn');
-                        if (dtb) dtb.textContent = dark3 ? '☀️ 白天模式' : '🌙 夜间模式';
+                        if (dtb) dtb.textContent = dark3 ? '☀️ 浅色模式' : '🌙 深色模式';
                         break;
                     case 'search':
                         toggleSearch();
@@ -875,7 +876,7 @@
                         manualUploadToCloud();
                         break;
                     case 'navigate':
-                        window.open('/navigate.html', '_blank');
+                        window.open('navigate.html', '_blank');
                         break;
                     case 'about':
                         window.location.href = 'about.html';
@@ -940,6 +941,24 @@
                 var $qualitySelector = $('#qualitySelector');
                 if (!$qualitySelector) return;
                 $qualitySelector.style.display = $qualitySelector.style.display === 'block' ? 'none' : 'block';
+            };
+        }
+
+        var btnExpand = $('#btnExpand');
+        if (btnExpand) {
+            btnExpand.onclick = function () {
+                const area = document.querySelector('.publish-area');
+                if (!area) return;
+                const isExpanded = area.classList.toggle('expanded');
+                btnExpand.textContent = isExpanded ? '🤫' : '⛶';
+                btnExpand.title = isExpanded ? '收起' : '展开';
+                if (isExpanded) {
+                    const ta = document.getElementById('publishText');
+                    if (ta) { ta.style.height = 'auto'; ta.style.overflowY = 'auto'; }
+                } else {
+                    const ta = document.getElementById('publishText');
+                    if (ta) { ta.style.height = ''; ta.style.overflowY = ''; }
+                }
             };
         }
 
@@ -1035,11 +1054,10 @@
             desktopThemeBtn.addEventListener('click', function () {
                 document.body.classList.toggle('dark-mode');
                 var isDark = document.body.classList.contains('dark-mode');
-                localStorage.setItem(window.App.KEY_THEME, isDark ? 'dark' : 'light');
-                window.App.showToast(isDark ? '🌙 已切换夜间模式' : '☀️ 已切换日间模式');
-                desktopThemeBtn.textContent = isDark ? '☀️ 白天模式' : '🌙 夜间模式';
+                window.App.showToast(isDark ? '🌙 已切换深色模式' : '☀️ 已切换浅色模式');
+                desktopThemeBtn.textContent = isDark ? '☀️ 浅色模式' : '🌙 深色模式';
                 var themeItem = $('#settingsThemeItem');
-                if (themeItem) themeItem.textContent = isDark ? '☀️ 切换日间模式' : '🌙 切换夜间模式';
+                if (themeItem) themeItem.textContent = isDark ? '☀️ 切换浅色模式' : '🌙 切换深色模式';
             });
         }
 
@@ -1062,9 +1080,18 @@
     }
 
     document.addEventListener('input', function (e) {
-        if (e.target && e.target.matches && e.target.matches('textarea[id^="commentInput-"]')) {
-            e.target.style.height = 'auto';
-            e.target.style.height = e.target.scrollHeight + 'px';
+        if (e.target && e.target.matches &&
+            (e.target.matches('textarea[id^="commentInput-"]') || e.target.id === 'publishText')) {
+            const ta = e.target;
+            const maxH = ta.id === 'publishText' ? 145 : 115;
+            ta.style.height = 'auto';
+            ta.style.height = Math.min(ta.scrollHeight, maxH) + 'px';
+            ta.style.overflowY = ta.scrollHeight > maxH ? 'auto' : 'hidden';
+            // 发帖框至少3行才显示展开按钮
+            if (ta.id === 'publishText') {
+                const btn = document.getElementById('btnExpand');
+                if (btn) btn.style.display = ta.scrollHeight >= 72 ? '' : 'none';
+            }
         }
     });
 
@@ -1103,8 +1130,14 @@
         }
     }, { passive: true });
 
-    var theme = localStorage.getItem(window.App.KEY_THEME);
-    if (!theme) theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+        document.body.classList.toggle('dark-mode', e.matches);
+        var dtb = document.getElementById('desktopThemeBtn');
+        if (dtb) dtb.textContent = e.matches ? '☀️ 浅色模式' : '🌙 深色模式';
+        var tm = document.getElementById('settingsThemeItem');
+        if (tm) tm.textContent = e.matches ? '☀️ 切换浅色模式' : '🌙 切换深色模式';
+    });
     if (theme === 'dark') {
         if (document.body) {
             document.body.classList.add('dark-mode');
@@ -1117,7 +1150,7 @@
     }
     // 设置桌面端初始主题按钮文字
     var dtbInit = document.getElementById('desktopThemeBtn');
-    if (dtbInit) dtbInit.textContent = theme === 'dark' ? '☀️ 白天模式' : '🌙 夜间模式';
+    if (dtbInit) dtbInit.textContent = theme === 'dark' ? '☀️ 浅色模式' : '🌙 深色模式';
 
     async function refreshAll() {
         try {
@@ -1354,7 +1387,11 @@
                                     }
                                 });
                             }
+                            // 保护 randomAIMode 不被云端数据覆盖
+                            var _savedRandomAI = window.App.randomAIMode;
                             renderUI();
+                            window.App.randomAIMode = _savedRandomAI;
+                            localStorage.setItem(window.App.KEY_RANDOM_AI, _savedRandomAI ? 'true' : 'false');
 
                             // 有效性检查：currentId 无效或指向 AI 账号时，自动选第一个普通账号
                             var curId = window.App.currentId;

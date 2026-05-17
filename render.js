@@ -77,7 +77,16 @@
         }
 
         if (!aiAccounts || aiAccounts.length === 0) {
-            container.innerHTML = '<div style="font-size:12px;color:var(--text-light);padding:8px;">暂无 AI 账号</div>';
+            container.innerHTML =
+                '<div style="padding:12px 8px;text-align:center;">' +
+                '<div style="font-size:12px;color:var(--text-light);margin-bottom:10px;">暂无 AI 账号</div>' +
+                '<button id="sidebarAddFirstAI" style="background:var(--ai-purple,#7c5cfc);color:#fff;border:none;' +
+                'border-radius:16px;padding:6px 18px;font-size:13px;cursor:pointer;">+ 添加 AI 人设</button>' +
+                '</div>';
+            setTimeout(function () {
+                var btn = document.getElementById('sidebarAddFirstAI');
+                if (btn) btn.onclick = function () { window.App.addAIAccount(); };
+            }, 0);
             return;
         }
 
@@ -138,14 +147,11 @@
                 }
                 window.App.activeAIId = item.dataset.aiId;
                 localStorage.setItem(window.App.KEY_ACTIVE_AI, window.App.activeAIId);
-                // 手动选择AI账号时，自动关闭随机AI模式
-                if (window.App.randomAIMode) {
-                    window.App.randomAIMode = false;
-                    localStorage.setItem(window.App.KEY_RANDOM_AI, 'false');
-                    window.App.showToastBottom('🎲 随机AI模式已关闭 · 🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
-                } else {
-                    window.App.showToastBottom('🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
-                }
+                // 手动选择AI账号时，无条件关闭随机AI模式
+                var wasRandom = window.App.randomAIMode;
+                window.App.randomAIMode = false;
+                localStorage.setItem(window.App.KEY_RANDOM_AI, 'false');
+                window.App.showToastBottom((wasRandom ? '🎲 随机AI模式已关闭 · ' : '') + '🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
                 renderHeader();
                 renderAIDropdown();
             });
@@ -263,18 +269,12 @@
                 if (e.target.dataset.action === 'edit-ai') { window.App.editAccount(e.target.dataset.accountId); return; }
                 window.App.activeAIId = item.dataset.aiId;
                 localStorage.setItem(window.App.KEY_ACTIVE_AI, window.App.activeAIId);
-                // 手动选择AI账号时，自动关闭随机AI模式
-                if (window.App.randomAIMode) {
-                    window.App.randomAIMode = false;
-                    localStorage.setItem(window.App.KEY_RANDOM_AI, 'false');
-                    window.App.showToastBottom('🎲 随机AI模式已关闭 · 🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
-                    $aiDropdown.style.display = 'none';
-                    renderAIDropdown();
-                    renderHeader();
-                    return;
-                }
+                // 手动选择AI账号时，无条件关闭随机AI模式
+                var wasRandom = window.App.randomAIMode;
+                window.App.randomAIMode = false;
+                localStorage.setItem(window.App.KEY_RANDOM_AI, 'false');
                 $aiDropdown.style.display = 'none';
-                window.App.showToastBottom('🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
+                window.App.showToastBottom((wasRandom ? '🎲 随机AI模式已关闭 · ' : '') + '🤖 已切换：' + (window.App.getAcc(window.App.activeAIId)?.nickname || 'AI'));
                 renderAIDropdown();
                 renderHeader();
             });
@@ -291,10 +291,22 @@
         if (!$timeline) return;
 
         if (reset) {
+            // 保存当前评论输入框的内容
+            var _savedInputs = {};
+            $timeline.querySelectorAll('[id^="commentInput-"]').forEach(function (ta) {
+                _savedInputs[ta.id] = ta.value;
+            });
             $timeline.innerHTML = '';
             renderedCount = 0;
             window.App.renderedCount = 0;
             allPostsRendered = false;
+            // 渲染完成后恢复
+            setTimeout(function () {
+                Object.keys(_savedInputs).forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) el.value = _savedInputs[id];
+                });
+            }, 0);
         }
         const sorted = [...window.App.posts].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.timestamp - a.timestamp);
         const toRender = sorted.slice(renderedCount, renderedCount + PAGE_SIZE);
@@ -325,7 +337,7 @@
         return `<div class="comment-item">
                 <div class="comment-content">
                     <span class="comment-user">${window.App.escapeHtml(cu.nickname)}${window.App.getBadgeHtml(cu)}：</span>
-                    <span class="${isAI ? 'ai-comment-text' : ''}">${window.App.parseMarkdown(c.text)}</span>
+                    <div class="${isAI ? 'ai-comment-text' : ''}">${window.App.parseMarkdown(c.text)}</div>
                     <span class="comment-time">${window.App.formatTime(c.timestamp)}</span>
                 </div>
                 <button class="reply-btn" data-action="copy-comment" data-post-id="${postId}" data-comment-id="${c.id}">复制</button>

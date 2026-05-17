@@ -2,187 +2,185 @@
 <html lang="zh-CN">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>朋友圈 - Moments</title>
-    <meta name="description" content="分享你的生活点滴">
-    <script src="https://cdn.bootcdn.net/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous">
-    </script>
-    <link rel="stylesheet" href="styles.css">
-    <script type="module" src="cloudflare.js"></script>
-    <script src="db.js"></script>
-    <script src="utils.js"></script>
-    <script src="markdown.js"></script>
-    <script src="state.js"></script>
-    <script src="publish.js"></script>
-    <script src="render.js"></script>
-    <script src="ai.js"></script>
-    <script src="modal.js"></script>
-    <script src="event.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>朋友圈 - Moments</title>
+  <meta name="description" content="分享你的生活点滴">
+  <link rel="stylesheet" href="styles.css?v=2026051701">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css">
+  <script src="marked.umd.js?v=2026051701"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
+
+  <script src="markdown.js?v=2026051701"></script>
+  <script type="module" src="cloudflare.js?v=2026051701"></script>
+  <script src="db.js?v=2026051701"></script>
+  <script src="utils.js?v=2026051701"></script>
+  <script src="state.js?v=2026051701"></script>
+  <script src="publish.js?v=2026051701"></script>
+  <script src="render.js?v=2026051701"></script>
+  <script src="ai.js?v=2026051701"></script>
+  <script src="modal.js?v=2026051701"></script>
+  <script src="event.js?v=2026051701"></script>
+
 </head>
 
 <body>
-    <div class="image-preview-tooltip" id="imagePreviewTooltip" style="display:none;">
-        <img src="" alt="预览" id="imagePreviewImg">
+  <div class="image-preview-tooltip" id="imagePreviewTooltip" style="display:none;">
+    <img src="" alt="预览" id="imagePreviewImg">
+  </div>
+  <div class="app-container">
+    <div class="desktop-topbar" id="desktopTopbar">
+      <div class="topbar-left">
+        <span class="topbar-namespace" id="topbarNamespace"></span>
+      </div>
+      <div class="desktop-search">
+        <span class="desktop-search-icon">🔍</span>
+        <input type="text" id="desktopSearchInput" class="desktop-search-input" placeholder="搜索动态或发布者..." />
+        <button class="desktop-search-clear" id="desktopSearchClear" style="display:none;">✕</button>
+      </div>
+      <div class="topbar-right">
+        <button class="desktop-theme-btn" id="desktopThemeBtn">🌙 深色模式</button>
+      </div>
     </div>
-    <div class="app-container">
-        <div class="desktop-topbar" id="desktopTopbar">
-          <div class="topbar-left">
-            <span class="topbar-namespace" id="topbarNamespace"></span>
-          </div>
-          <div class="desktop-search">
-            <span class="desktop-search-icon">🔍</span>
-            <input
-              type="text"
-              id="desktopSearchInput"
-              class="desktop-search-input"
-              placeholder="搜索动态或发布者..."
-            />
-            <button class="desktop-search-clear" id="desktopSearchClear" style="display:none;">✕</button>
-          </div>
-          <div class="topbar-right">
-            <button class="desktop-theme-btn" id="desktopThemeBtn">🌙 夜间模式</button>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-user" id="sidebarUserArea">
+      </div>
+      <nav class="sidebar-nav">
+        <div class="sidebar-nav-item active" data-action="publish">✏️ 发布</div>
+        <div class="sidebar-nav-item" data-action="ai-post">✨ AI 发帖</div>
+        <div class="sidebar-nav-item" data-action="ghost-writer">✍️ 代写</div>
+        <div class="sidebar-nav-item" data-action="ai-settings">🤖 AI API KEY 配置</div>
+        <div class="sidebar-nav-item" data-action="export">📤 导出备份</div>
+        <div class="sidebar-nav-item" data-action="import">📥 导入恢复</div>
+        <div class="sidebar-nav-item" data-action="upload-cloud">☁️ 上传到云端</div>
+        <div class="sidebar-nav-item" data-action="saved-quotes">⭐ 收藏语录</div>
+        <div class="sidebar-nav-item" data-action="navigate">🧭 导航</div>
+      </nav>
+    </aside>
+    <main class="main-content">
+      <div class="namespace-banner" id="namespaceBanner" style="display:none;"></div>
+      <header class="header">
+        <div class="header-left" id="headerUserArea" title="点击切换普通账号">
+          <div id="headerAvatar"></div>
+          <span class="header-nickname" id="headerNickname">用户</span>
+          <span class="header-arrow">▾</span>
+        </div>
+        <div class="header-ai-area" id="headerAIArea" title="点击切换AI账号">
+          <span class="header-ai-icon">🤖</span>
+          <span class="header-ai-name" id="headerAIName">AI</span>
+          <span class="header-arrow">▾</span>
+        </div>
+        <div class="header-actions">
+          <button class="btn-icon" id="btnMoreMenu" title="更多">⋯</button>
+          <div class="settings-dropdown" id="settingsDropdown" style="display:none;">
+            <div class="settings-dropdown-item" data-action="toggle-theme" id="settingsThemeItem">🌙 切换深色模式
+            </div>
+            <div class="settings-dropdown-item" data-action="search">🔍 搜索</div>
+            <div class="settings-dropdown-item" data-action="ai-settings">🤖 AI API KEY 配置</div>
+            <div class="settings-dropdown-item" data-action="ai-post">✨ AI 发帖</div>
+            <div class="settings-dropdown-item" data-action="ghost-writer">✍️ 代写</div>
+            <div class="settings-dropdown-item" data-action="export">📤 导出备份</div>
+            <div class="settings-dropdown-item" data-action="import">📥 导入恢复</div>
+            <div class="settings-dropdown-item" data-action="upload-cloud">☁️ 上传到云端</div>
+            <div class="settings-dropdown-item" data-action="saved-quotes">⭐ 收藏语录</div>
+            <div class="settings-dropdown-item" data-action="navigate">🧭 导航</div>
+            
           </div>
         </div>
-        <aside class="sidebar" id="sidebar">
-          <div class="sidebar-user" id="sidebarUserArea">
-          </div>
-          <nav class="sidebar-nav">
-            <div class="sidebar-nav-item active" data-action="publish">✏️ 发布</div>
-            <div class="sidebar-nav-item" data-action="ai-post">✨ AI 发帖</div>
-            <div class="sidebar-nav-item" data-action="ghost-writer">✍️ 代写</div>
-            <div class="sidebar-nav-item" data-action="ai-settings">🤖 AI API KEY 配置</div>
-            <div class="sidebar-nav-item" data-action="export">📤 导出备份</div>
-            <div class="sidebar-nav-item" data-action="import">📥 导入恢复</div>
-            <div class="sidebar-nav-item" data-action="upload-cloud">☁️ 上传到云端</div>
-            <div class="sidebar-nav-item" data-action="saved-quotes">🔖 收藏语录</div>
-            <div class="sidebar-nav-item" data-action="navigate">🧭 导航</div>
-          </nav>
-        </aside>
-        <main class="main-content">
-        <div class="namespace-banner" id="namespaceBanner" style="display:none;"></div>
-        <header class="header">
-            <div class="header-left" id="headerUserArea" title="点击切换普通账号">
-                <div id="headerAvatar"></div>
-                <span class="header-nickname" id="headerNickname">用户</span>
-                <span class="header-arrow">▾</span>
-            </div>
-            <div class="header-ai-area" id="headerAIArea" title="点击切换AI账号">
-                <span class="header-ai-icon">🤖</span>
-                <span class="header-ai-name" id="headerAIName">AI</span>
-                <span class="header-arrow">▾</span>
-            </div>
-            <div class="header-actions">
-                <button class="btn-icon" id="btnMoreMenu" title="更多">⋯</button>
-                <div class="settings-dropdown" id="settingsDropdown" style="display:none;">
-                    <div class="settings-dropdown-item" data-action="toggle-theme" id="settingsThemeItem">🌙 切换夜间模式
-                    </div>
-                    <div class="settings-dropdown-item" data-action="search">🔍 搜索</div>
-                    <div class="settings-dropdown-item" data-action="ai-settings">🤖 AI API KEY 配置</div>
-                    <div class="settings-dropdown-item" data-action="ai-post">✨ AI 发帖</div>
-                    <div class="settings-dropdown-item" data-action="ghost-writer">✍️ 代写</div>
-                    <div class="settings-dropdown-item" data-action="export">📤 导出备份</div>
-                    <div class="settings-dropdown-item" data-action="import">📥 导入恢复</div>
-                    <div class="settings-dropdown-item" data-action="upload-cloud">☁️ 上传到云端</div>
-                    <div class="settings-dropdown-item" data-action="navigate">🧭 导航</div>
-                    <div class="settings-dropdown-item" data-action="saved-quotes">🔖 收藏语录</div>
-                </div>
-            </div>
-            <div class="search-bar" id="searchBar" style="display:none;">
-                <input type="text" id="searchInput" placeholder="搜索动态或发布者...">
-                <button class="btn-icon" id="btnClearSearch" title="关闭搜索">✕</button>
-            </div>
-        </header>
-        <div class="account-dropdown normal-dropdown" id="normalDropdown" style="display:none;"></div>
-        <div class="account-dropdown ai-dropdown" id="aiDropdown" style="display:none;"></div>
-        <!-- 移动端键盘触发（iOS 要求已存在于 DOM 中才能弹出键盘） -->
-        <input id="keyboardTrigger" aria-hidden="true" style="position:fixed;opacity:0;pointer-events:none;height:1px;width:1px;font-size:16px;">
-        <!-- AI 思考中提示条 -->
-        <div class="ai-thinking-bar" id="aiThinkingBar">
-            <div class="thinking-avatar" id="thinkingAvatar">🤖</div>
-            <span id="thinkingText">AI 正在思考中<span class="thinking-dots"></span></span>
+        <div class="search-bar" id="searchBar" style="display:none;">
+          <input type="text" id="searchInput" placeholder="搜索动态或发布者...">
+          <button class="btn-icon" id="btnClearSearch" title="关闭搜索">✕</button>
         </div>
-        <div class="publish-area">
-            <textarea class="publish-input" id="publishText"
-                placeholder="分享你的生活点滴...（支持 Markdown：**加粗** *斜体* `代码` ~~删除~~ __下划线__ ||剧透||）"
-                maxlength="2000"></textarea>
-            <div class="publish-preview" id="publishPreview"></div>
-            <div class="publish-toolbar">
-                <button class="publish-tool-btn" id="btnAddImage"><span>🖼️</span> </button>
-                <button class="publish-tool-btn" id="btnAddVideo"><span>🎬</span> </button>
-                <button class="publish-tool-btn" id="btnAddEmoji"><span>😀</span> </button>
-                <!-- 图片质量 -->
-                <span class="quality-wrapper">
-                    <span class="publish-tool-btn" id="btnQuality" title="图片质量">⚙️</span>
-                    <div class="quality-selector" id="qualitySelector">
-                        <select id="imgQuality">
-                            <option value="1">原图</option>
-                            <option value="0.9" selected>高</option>
-                            <option value="0.7">中</option>
-                            <option value="0.5">低</option>
-                        </select>
-                    </div>
-                </span>
-                <button class="publish-tool-btn" id="btnSchedule" title="设定发布时间">🕒</button>
-                <input type="datetime-local" id="scheduleTime"
-                    style="display:none; padding:4px 8px; border-radius:8px; border:1px solid var(--border); font-size:12px; background:var(--input-bg); color:var(--text);">
-                <span class="publish-char-count" id="charCount">0/2000</span>
-                <button class="btn-cancel-edit" id="btnCancelEdit" style="display:none;">取消</button>
-                <button class="btn-publish" id="btnPublish" disabled>发布</button>
+      </header>
+      <div class="account-dropdown normal-dropdown" id="normalDropdown" style="display:none;"></div>
+      <div class="account-dropdown ai-dropdown" id="aiDropdown" style="display:none;"></div>
+      <!-- 移动端键盘触发（iOS 要求已存在于 DOM 中才能弹出键盘） -->
+      <input id="keyboardTrigger" aria-hidden="true"
+        style="position:fixed;opacity:0;pointer-events:none;height:1px;width:1px;font-size:16px;">
+      <!-- AI 思考中提示条 -->
+      <div class="ai-thinking-bar" id="aiThinkingBar">
+        <div class="thinking-avatar" id="thinkingAvatar">🤖</div>
+        <span id="thinkingText">AI 正在思考中<span class="thinking-dots"></span></span>
+      </div>
+      <div class="publish-area">
+        <textarea class="publish-input" id="publishText"
+          placeholder="分享你的生活点滴...（支持 Markdown：**加粗** *斜体* `代码` ~~删除~~ __下划线__ ||剧透||）" maxlength="10000"></textarea>
+        <div class="publish-preview" id="publishPreview"></div>
+        <div class="publish-toolbar">
+          <button class="publish-tool-btn" id="btnAddImage"><span>🖼️</span> </button>
+          <button class="publish-tool-btn" id="btnAddVideo"><span>🎬</span> </button>
+          <button class="publish-tool-btn" id="btnAddEmoji"><span>😀</span> </button>
+          <!-- 图片质量 -->
+          <span class="quality-wrapper">
+            <span class="publish-tool-btn" id="btnQuality" title="图片质量">⚙️</span>
+            <div class="quality-selector" id="qualitySelector">
+              <select id="imgQuality">
+                <option value="1">原图</option>
+                <option value="0.9" selected>高</option>
+                <option value="0.7">中</option>
+                <option value="0.5">低</option>
+              </select>
             </div>
-            <input type="file" class="file-input-hidden" id="imageInput" accept="image/*" multiple>
-            <input type="file" class="file-input-hidden" id="videoInput" accept="video/*">
+          </span>
+          <button class="publish-tool-btn" id="btnSchedule" title="设定发布时间">🕒</button>
+          <input type="datetime-local" id="scheduleTime"
+            style="display:none; padding:4px 8px; border-radius:8px; border:1px solid var(--border); font-size:12px; background:var(--input-bg); color:var(--text);">
+          <button class="publish-tool-btn" id="btnExpand" title="全屏编辑" style="display:none;">⛶</button>
+          <span class="publish-char-count" id="charCount">0/10000</span>
+          <button class="btn-cancel-edit" id="btnCancelEdit" style="display:none;">取消</button>
+          <button class="btn-publish" id="btnPublish" disabled>发布</button>
         </div>
-        <div class="timeline" id="timeline"></div>
-        <div class="loader-indicator" id="loaderIndicator">加载更多...</div>
-        <button class="btn-back-to-top" id="btnBackToTop" title="回到顶部">⬆</button>
-        </main>
-        <aside class="right-sidebar" id="rightSidebar">
-          <div class="right-sidebar-section">
-            <div class="right-sidebar-title">
-              <span>当前 AI 账号</span>
-            </div>
-            <div class="ai-account-list-wrapper">
-              <div class="ai-account-list" id="sidebarAIList">
-              </div>
+        <input type="file" class="file-input-hidden" id="imageInput" accept="image/*" multiple>
+        <input type="file" class="file-input-hidden" id="videoInput" accept="video/*">
+      </div>
+      <div class="timeline" id="timeline"></div>
+      <div class="loader-indicator" id="loaderIndicator">加载更多...</div>
+      <button class="btn-back-to-top" id="btnBackToTop" title="回到顶部">⬆</button>
+    </main>
+    <aside class="right-sidebar" id="rightSidebar">
+      <div class="right-sidebar-section">
+        <div class="right-sidebar-title">
+          <span>当前 AI 账号</span>
+        </div>
+        <div class="ai-account-list-wrapper">
+          <div class="ai-account-list" id="sidebarAIList">
+          </div>
+        </div>
+      </div>
+      <div class="right-sidebar-section" id="quoteSection">
+        <div class="quote-card" id="quoteCard">
+          <div class="quote-header">
+            <span class="quote-title">AI 语录</span>
+            <div class="quote-actions">
+              <button class="quote-btn" id="btnQuoteRefresh" title="换一条">🔄</button>
+              <button class="quote-btn quote-fav-btn" id="btnQuoteFav" title="收藏">🤍</button>
             </div>
           </div>
-          <div class="right-sidebar-section" id="quoteSection">
-            <div class="quote-card" id="quoteCard">
-              <div class="quote-header">
-                <span class="quote-title">AI 语录</span>
-                <div class="quote-actions">
-                  <button class="quote-btn" id="btnQuoteRefresh" title="换一条">🔄</button>
-                  <button class="quote-btn quote-fav-btn" id="btnQuoteFav" title="收藏">🤍</button>
-                </div>
-              </div>
-              <div class="quote-body" id="quoteBody">
-                <span class="quote-text" id="quoteText"></span>
-                <span class="quote-author" id="quoteAuthor"></span>
-              </div>
-              <div class="quote-loading" id="quoteLoading" style="display:none;">
-                <span class="quote-dot">●</span><span class="quote-dot">●</span><span class="quote-dot">●</span>
-              </div>
-            </div>
+          <div class="quote-body" id="quoteBody">
+            <span class="quote-text" id="quoteText"></span>
+            <span class="quote-author" id="quoteAuthor"></span>
           </div>
-        </aside>
-    </div>
+          <div class="quote-loading" id="quoteLoading" style="display:none;">
+            <span class="quote-dot">●</span><span class="quote-dot">●</span><span class="quote-dot">●</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
 
-    <div class="modal-overlay" id="imageModal" style="display:none;">
-        <div
-            style="position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
-            <button id="imageModalClose"
-                style="position:absolute; top:20px; right:30px; font-size:30px; background:none; border:none; color:#fff; cursor:pointer;">✕</button>
-            <button id="imageModalPrev"
-                style="position:absolute; left:20px; font-size:30px; background:none; border:none; color:#fff; cursor:pointer;">◀</button>
-            <img id="imageModalImg" src=""
-                style="max-width:90%; max-height:85vh; object-fit:contain; border-radius:4px;">
-            <button id="imageModalNext"
-                style="position:absolute; right:20px; font-size:30px; background:none; border:none; color:#fff; cursor:pointer;">▶</button>
-            <span id="imageModalCounter"
-                style="position:absolute; bottom:30px; color:#fff; font-size:14px; background:rgba(0,0,0,0.5); padding:2px 12px; border-radius:10px;"></span>
-        </div>
+  <div class="modal-overlay" id="imageModal" style="display:none;">
+    <div style="position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
+      <button id="imageModalClose"
+        style="position:absolute; top:20px; right:30px; font-size:30px; background:none; border:none; color:#fff; cursor:pointer;">✕</button>
+      <button id="imageModalPrev"
+        style="position:absolute; left:20px; font-size:30px; background:none; border:none; color:#fff; cursor:pointer;">◀</button>
+      <img id="imageModalImg" src="" style="max-width:90%; max-height:85vh; object-fit:contain; border-radius:4px;">
+      <button id="imageModalNext"
+        style="position:absolute; right:20px; font-size:30px; background:none; border:none; color:#fff; cursor:pointer;">▶</button>
+      <span id="imageModalCounter"
+        style="position:absolute; bottom:30px; color:#fff; font-size:14px; background:rgba(0,0,0,0.5); padding:2px 12px; border-radius:10px;"></span>
     </div>
+  </div>
 
 </body>
 

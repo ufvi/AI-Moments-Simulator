@@ -311,7 +311,9 @@
         if (!post) return;
         window.App.editingPostId = id;
         window.App.editingPostUserId = post.userId;
-        document.querySelector('#publishText').value = post.text || '';
+        const $pt = document.querySelector('#publishText');
+        $pt.value = post.text || '';
+        $pt.dispatchEvent(new Event('input', { bubbles: true }));
         window.App.publishFiles = [];
         for (const mid of [...(post.images || []), ...(post.videos || [])]) {
             var blob = null;

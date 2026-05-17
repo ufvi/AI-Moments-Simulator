@@ -496,10 +496,18 @@ body {
     color: var(--text);
     background: transparent;
     min-height: 55px;
+    max-height: 145px;
 }
 
 .publish-input::placeholder {
     color: var(--text-light);
+}
+
+/* 展开模式 — 仅增高，保留原位 */
+.publish-area.expanded .publish-input {
+    max-height: none;
+    min-height: calc(100vh - 200px);
+    overflow-y: auto;
 }
 
 .publish-preview {
@@ -586,6 +594,12 @@ body {
     transition: all var(--transition);
     font-family: inherit;
     white-space: nowrap;
+}
+
+#btnExpand {
+    font-size: 14px;
+    padding: 6px 8px;
+    line-height: 1;
 }
 
 .publish-tool-btn:hover {
@@ -835,8 +849,12 @@ body {
     font-size: 14px;
     line-height: 1.6;
     word-break: break-word;
-    white-space: pre-wrap;
     color: var(--text);
+}
+.post-text p,
+.comment-content p {
+    margin: 0;
+    white-space: normal;
 }
 
 .post-images-grid {
@@ -1077,6 +1095,18 @@ body {
 .comment-content {
     flex: 1;
 }
+.comment-content>div {
+    display: inline;
+}
+.comment-content>div p {
+    display: inline;
+    margin: 0;
+}
+.comment-content>div ul,
+.comment-content>div ol {
+    margin: 4px 0;
+    padding-left: 20px;
+}
 
 .comment-user {
     font-weight: 600;
@@ -1173,6 +1203,7 @@ body {
     resize: none;
     overflow: hidden;
     min-height: 32px;
+    max-height: 115px;
     line-height: 1.4;
 }
 
@@ -1415,11 +1446,15 @@ body {
 
 .post-text code,
 .comment-content code {
-    background: var(--input-bg);
+    background: #f0f0f0;
     padding: 2px 5px;
     border-radius: 4px;
     font-size: 0.9em;
     font-family: monospace;
+}
+.dark-mode .post-text code,
+.dark-mode .comment-content code {
+    background: #1e1e36;
 }
 
 .post-text del,
@@ -1427,18 +1462,86 @@ body {
     opacity: 0.6;
 }
 
-.blockquote {
+/* 代码块 */
+.code-block-wrapper {
+    position: relative;
     margin: 8px 0;
-    padding: 10px 14px;
-    border-left: 4px solid var(--accent);
-    background: var(--input-bg);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    color: var(--text-secondary);
-    font-size: 0.95em;
-    line-height: 1.7;
 }
 
-.md-list {
+.post-text pre,
+.comment-content pre {
+    background: #f0f0f0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    position: relative;
+    font-size: 0.9em;
+    line-height: 1.6;
+    margin: 0;
+}
+.dark-mode .post-text pre,
+.dark-mode .comment-content pre {
+    background: #1e1e36;
+}
+.post-text pre code,
+.comment-content pre code {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+}
+
+/* 复制按钮 */
+.code-copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 2;
+    line-height: 1;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+.code-block-wrapper:hover .code-copy-btn,
+.code-copy-btn:focus {
+    opacity: 1;
+}
+.code-copy-btn:hover {
+    background: rgba(255,255,255,0.2);
+    color: var(--text);
+}
+.code-copy-btn:active {
+    transform: scale(0.95);
+}
+
+blockquote,
+.blockquote {
+    margin: 8px 0;               /* 上下外边距 8px，左右无外边距 */
+    padding: 4px 14px;          /* 内边距：上下10px，左右14px */
+    border-left: 4px solid var(--accent); /* 左侧彩色边框（主题色） */
+    background: var(--input-bg); /* 背景色（输入框背景色） */
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0; /* 圆角：仅右侧上下 */
+    color: var(--text-secondary);/* 文字颜色（次要文本色） */
+    font-size: 0.95em;           /* 字体比正文稍小 */
+    line-height: 1.7;            /* 行高，提升阅读舒适度 */
+}
+
+.md-list,
+.post-text ul,
+.post-text ol,
+.comment-content ul,
+.comment-content ol {
     margin: 6px 0;
     padding-left: 22px;
     font-size: 0.95em;
@@ -1446,17 +1549,89 @@ body {
     color: var(--text);
 }
 
-.md-list li {
+.md-list li,
+.post-text li,
+.comment-content li {
     padding: 1px 0;
 }
 
-.md-list li::marker {
+.md-list li::marker,
+.post-text li::marker,
+.comment-content li::marker {
     color: var(--accent);
 }
 
-.md-list-ordered li::marker {
+.md-list-ordered li::marker,
+.post-text ol li::marker,
+.comment-content ol li::marker {
     font-weight: 600;
     color: var(--text-secondary);
+}
+
+/* 二级列表（嵌套）增加缩进 */
+.post-text ul ul,
+.post-text ol ol,
+.post-text ul ol,
+.post-text ol ul,
+.comment-content ul ul,
+.comment-content ol ol,
+.comment-content ul ol,
+.comment-content ol ul {
+    padding-left: 28px;
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+/* 任务清单 checkbox */
+.post-text input[type="checkbox"],
+.comment-content input[type="checkbox"] {
+    margin: 0 4px 0 0;
+    vertical-align: middle;
+    width: 14px;
+    height: 14px;
+    accent-color: var(--accent);
+}
+
+/* 任务清单项 - 隐藏列表标记 */
+.post-text li:has(> input[type="checkbox"]),
+.comment-content li:has(> input[type="checkbox"]) {
+    list-style: none;
+    margin-left: 0;
+    padding-left: 0;
+}
+
+/* 分割线 */
+.post-text hr,
+.comment-content hr {
+    margin: 12px 0;
+    border: none;
+    border-top: 1px solid var(--border);
+}
+
+/* Markdown 表格 */
+.post-text table,
+.comment-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+    font-size: 0.95em;
+}
+.post-text th,
+.post-text td,
+.comment-content th,
+.comment-content td {
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    text-align: left;
+}
+.post-text th,
+.comment-content th {
+    background: var(--input-bg);
+    font-weight: 600;
+}
+.post-text tr:nth-child(even) td,
+.comment-content tr:nth-child(even) td {
+    background: rgba(255, 255, 255, 0.02);
 }
 
 .spoiler {

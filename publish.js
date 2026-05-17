@@ -123,7 +123,7 @@
         const $charCount = getCharCount();
         const $btnPublish = getBtnPublish();
         if (!$publishText || !$charCount || !$btnPublish) return;
-        $charCount.textContent = $publishText.value.length + '/2000';
+        $charCount.textContent = $publishText.value.length + '/10000';
         $btnPublish.disabled = !$publishText.value.trim() && !window.App.publishFiles.length;
     }
 
@@ -196,6 +196,11 @@
         }
         window.App.publishFiles = [];
         $publishText.value = '';
+        $publishText.style.height = '';
+        $publishText.style.overflowY = '';
+        document.querySelector('.publish-area')?.classList.remove('expanded');
+        var btnEx = document.getElementById('btnExpand');
+        if (btnEx) { btnEx.textContent = '⌵'; btnEx.classList.remove('rotated'); btnEx.title = '展开'; btnEx.style.display = 'none'; }
         var st = $('#scheduleTime'); if (st) { st.style.display = 'none'; st.value = ''; }
         renderPublishPreview();
         updatePublishBtn();
@@ -212,7 +217,10 @@
             if (!window.App.publishFiles[i].mediaId) URL.revokeObjectURL(window.App.publishFiles[i].previewUrl);
         }
         window.App.publishFiles = [];
-        var $pt = $('#publishText'); if ($pt) $pt.value = '';
+        var $pt = $('#publishText'); if ($pt) { $pt.value = ''; $pt.style.height = ''; $pt.style.overflowY = ''; }
+        document.querySelector('.publish-area')?.classList.remove('expanded');
+        var btnEx = document.getElementById('btnExpand');
+        if (btnEx) { btnEx.textContent = '⌵'; btnEx.classList.remove('rotated'); btnEx.title = '展开'; btnEx.style.display = 'none'; }
         var $st = $('#scheduleTime'); if ($st) { $st.style.display = 'none'; $st.value = ''; }
         window.App.editingPostId = null;
         window.App.editingPostUserId = null;

@@ -1,130 +1,198 @@
 (function () {
-    // 安全 HTML 转义（若全局未提供，则使用内置实现）
-    function escapeHtml(text) {
-        if (window.App && window.App.escapeHtml) {
-            return window.App.escapeHtml(text);
-        }
-        // 内置简单转义
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-        };
-        return String(text).replace(/[&<>"']/g, c => map[c]);
+    if (typeof window.marked === 'undefined') {
+        console.error('[Markdown] marked 未加载');
+        return;
     }
 
-    // 安全 URL 校验（只允许 http、https、mailto 协议，也支持相对路径）
+    // ---------- 基础配置 ----------
+    marked.setOptions({
+        html: true,
+        breaks: true,
+        gfm: true
+    });
+
+    // ---------- 1. 自定义剧透语法 ||...|| ----------
+    var spoilerExt = {
+        name: 'spoiler',
+        level: 'inline',
+        start: function (src) { return src.indexOf('||'); },
+        tokenizer: function (src) {
+            var match = src.match(/^\|\|([\s\S]*?)\|\|/);
+            if (match) {
+                return { type: 'spoiler', raw: match[0], text: match[1] };
+            }
+        },
+        renderer: function (token) {
+            return '<span class="spoiler">' + token.text + '</span>';
+        }
+    };
+    marked.use({ extensions: [spoilerExt] });
+
+    // ---------- 2. 安全 URL 校验 ----------
     function isSafeUrl(url) {
+        if (!url) return false;
         try {
-            const parsed = new URL(url, window.location.origin);
-            return ['http:', 'https:', 'mailto:'].includes(parsed.protocol);
-        } catch {
-            return false;
+            var parsed = new URL(url, window.location.origin);
+            return ['http:', 'https:', 'mailto:'].indexOf(parsed.protocol) !== -1;
+        } catch (e) {
+            return /^\/[^/]/.test(url) || /^\.\.?\//.test(url);
         }
     }
 
-    // 内联语法解析（输入已是 escapeHtml 后的安全文本）
-    function parseInline(text) {
-        let html = text;
-        // 粗体、斜体
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        // 删除线
-        html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
-        // 行内代码
-        html = html.replace(/`(.+?)`/g, '<code>$1</code>');
-        // 下划线（放宽限制，允许内部包含单下划线）
-        html = html.replace(/__(.+?)__/g, '<u>$1</u>');
-        // 图片
-        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
-            if (isSafeUrl(url)) {
-                return `<img src="${url}" alt="${alt}" style="max-width:100%;">`;
-            }
-            return match; // 不安全协议则原样显示
-        });
-        // 链接
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
-            if (isSafeUrl(url)) {
-                return `<a href="${url}" target="_blank" rel="noopener nofollow ugc">${text}</a>`;
-            }
-            return match;
-        });
-        // 剧透
-        html = html.replace(/\|\|(.+?)\|\|/g, '<span class="spoiler">$1</span>');
-        return html;
-    }
+    // 自定义渲染器：安全链接 + 安全图片 + 代码复制按钮
+    var renderer = new marked.Renderer();
 
-    // 主解析函数
-    function parseMarkdown(text) {
-        if (!text) return '';
+    // 链接覆写：不安全链接只渲染文本
+    var _link = renderer.link.bind(renderer);
+    renderer.link = function (token) {
+        if (!isSafeUrl(token.href)) {
+            return this.parser.parseInline(token.tokens);
+        }
+        return _link(token);
+    };
 
-        // 占位符系统，用于保护块级 HTML 不被后续全局转义污染
-        const placeholders = [];
-        let counter = 0;
-        function addPlaceholder(html) {
-            const key = `\x00BLOCK${counter++}\x00`;
-            placeholders.push({ key, html });
-            return key;
+    // 图片覆写：不安全图片退化为 Markdown 文本
+    var _image = renderer.image.bind(renderer);
+    renderer.image = function (token) {
+        if (!isSafeUrl(token.href)) {
+            return '![' + (token.text || '') + '](' + token.href + ')';
+        }
+        return _image(token);
+    };
+
+    // 代码块添加复制按钮
+    var _code = renderer.code.bind(renderer);
+    renderer.code = function (token) {
+        return '<div class="code-block-wrapper">' +
+               '<button class="code-copy-btn" onclick="copyCode(this)">📋 复制</button>' +
+               _code(token).replace('<pre>', '<pre>') +
+               '</div>';
+    };
+
+    marked.setOptions({ renderer: renderer });
+
+    // ---------- 3. 数学公式处理 (KaTeX) ----------
+    // 使用预处理提取公式 → 占位符 → marked 解析 → 后处理渲染
+    // 可避免 marked 行内扩展与 codespan 的优先级冲突
+    var MATH_BLOCK = '\u0000MB\u0000';
+    var MATH_INLINE = '\u0000MI\u0000';
+
+    function extractMath(text) {
+        // 1. 保护代码块
+        var codeBlocks = [];
+        text = text.replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g, function (m) {
+            codeBlocks.push(m);
+            return '\u0000CB' + (codeBlocks.length - 1) + '\u0000';
+        });
+
+        // 2. 提取块级公式 $$...$$
+        var mathBlocks = [];
+        text = text.replace(/\$\$\n?([\s\S]*?)\$\$/g, function (_, f) {
+            mathBlocks.push(f.trim());
+            return MATH_BLOCK + (mathBlocks.length - 1) + MATH_BLOCK;
+        });
+
+        // 3. 提取行内公式 $...$
+        // 要求：$ 内至少一个字符，且首尾不能是空格
+        var mathInlines = [];
+        text = text.replace(/\$([^\s$](?:[^$]*[^\s$])?)\$/g, function (_, f) {
+            mathInlines.push(f);
+            return MATH_INLINE + (mathInlines.length - 1) + MATH_INLINE;
+        });
+
+    // 4. 恢复代码块
+        for (var i = 0; i < codeBlocks.length; i++) {
+            text = text.replace('\u0000CB' + i + '\u0000', codeBlocks[i]);
         }
 
-        let result = text;
+        return { text: text, mathBlocks: mathBlocks, mathInlines: mathInlines };
+    }
 
-        // 1. 水平分割线（单独匹配整行）
-        result = result.replace(/^ {0,3}([-_*])\1{2,} *$/gm, (match) => {
-            return addPlaceholder('<hr>');
+    function restoreMath(text, mathBlocks, mathInlines) {
+        if (typeof window.katex !== 'undefined') {
+            // 块级公式
+            for (var i = 0; i < mathBlocks.length; i++) {
+                try {
+                    var rendered = window.katex.renderToString(mathBlocks[i], {
+                        displayMode: true,
+                        throwOnError: false
+                    });
+                    // 用 <p> 包裹，与原始行为一致
+                    text = text.replace(MATH_BLOCK + i + MATH_BLOCK, '<p>' + rendered + '</p>');
+                } catch (e) {
+                    text = text.replace(MATH_BLOCK + i + MATH_BLOCK, '$$' + mathBlocks[i] + '$$');
+                }
+            }
+            // 行内公式
+            for (var j = 0; j < mathInlines.length; j++) {
+                try {
+                    var rendered = window.katex.renderToString(mathInlines[j], {
+                        displayMode: false,
+                        throwOnError: false
+                    });
+                    text = text.replace(MATH_INLINE + j + MATH_INLINE, rendered);
+                } catch (e) {
+                    text = text.replace(MATH_INLINE + j + MATH_INLINE, '$' + mathInlines[j] + '$');
+                }
+            }
+        } else {
+            // 无 KaTeX 则恢复原 Markdown
+            for (var k = 0; k < mathBlocks.length; k++) {
+                text = text.replace(MATH_BLOCK + k + MATH_BLOCK, '$$' + mathBlocks[k] + '$$');
+            }
+            for (var l = 0; l < mathInlines.length; l++) {
+                text = text.replace(MATH_INLINE + l + MATH_INLINE, '$' + mathInlines[l] + '$');
+            }
+        }
+        return text;
+    }
+
+    // ---------- 4. 暴露解析函数 ----------
+    function parseMarkdown(text, inline) {
+        if (!text || typeof text !== 'string') return '';
+        try {
+            if (inline) {
+                // 行内模式只需处理行内公式
+                var im = extractMath(text);
+                var result = marked.parseInline(im.text);
+                result = restoreMath(result, im.mathBlocks, im.mathInlines);
+                return result;
+            }
+            var em = extractMath(text);
+            var result = marked.parse(em.text);
+            result = restoreMath(result, em.mathBlocks, em.mathInlines);
+            return result;
+        } catch (err) {
+            console.error('[Markdown] 解析错误', err);
+            return escapeHtml(text).replace(/\n/g, '<br>');
+        }
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>]/g, function (m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
         });
-
-        // 2. 引用块（连续以 > 开头的行）
-        result = result.replace(/^(?:>.*(?:\n|$))+/gm, (match) => {
-            const lines = match.split('\n').filter(line => /^>/.test(line));
-            const content = lines.map(line => {
-                // 去掉 > 和紧随其后的一个可选空格
-                const text = line.replace(/^> ?/, '');
-                return parseInline(escapeHtml(text));
-            }).join('<br>');
-            return addPlaceholder(`<blockquote class="blockquote">${content}</blockquote>`);
-        });
-
-        // 3. 无序列表（- * +）
-        result = result.replace(/^(?: {0,3}[-*+]\s+.+(?:\n {0,3}[-*+]\s+.+)*)/gm, (match) => {
-            const items = match.split('\n').map(line => {
-                const text = line.replace(/^ {0,3}[-*+]\s+/, '');
-                return `<li>${parseInline(escapeHtml(text))}</li>`;
-            }).join('');
-            return addPlaceholder(`<ul class="md-list">${items}</ul>`);
-        });
-
-        // 4. 有序列表（1. 2. ...）
-        result = result.replace(/^(?: {0,3}\d+\.\s+.+(?:\n {0,3}\d+\.\s+.+)*)/gm, (match) => {
-            const items = match.split('\n').map(line => {
-                const text = line.replace(/^ {0,3}\d+\.\s+/, '');
-                return `<li>${parseInline(escapeHtml(text))}</li>`;
-            }).join('');
-            return addPlaceholder(`<ol class="md-list md-list-ordered">${items}</ol>`);
-        });
-
-        // 5. 对剩余普通文本进行 HTML 转义
-        result = escapeHtml(result);
-
-        // 6. 普通文本中的换行转 <br>（保留原有行为）
-        result = result.replace(/\n/g, '<br>');
-
-        // 7. 对普通文本进行内联解析
-        result = parseInline(result);
-
-        // 8. 将占位符替换回真实 HTML 块
-        placeholders.forEach(({ key, html }) => {
-            result = result.replace(key, html);
-        });
-
-        // 9. 清理块级元素后多余的 <br>
-        result = result.replace(/(<\/(?:ul|ol|blockquote)>|<hr>)\s*<br>/g, '$1');
-
-        return result;
     }
 
     window.App = window.App || {};
     window.App.parseMarkdown = parseMarkdown;
+
+    // 代码块复制功能
+    window.copyCode = function (btn) {
+        var code = btn.parentNode.querySelector('code');
+        if (!code) return;
+        var text = code.textContent.replace(/\n+$/, '');
+        navigator.clipboard.writeText(text).then(function () {
+            var orig = btn.textContent;
+            btn.textContent = '✅ 已复制';
+            btn.style.opacity = '1';
+            setTimeout(function () { btn.textContent = orig; btn.style.opacity = ''; }, 1500);
+        }).catch(function () {
+            btn.textContent = '❌ 失败';
+            setTimeout(function () { btn.textContent = '📋 复制'; }, 1500);
+        });
+    };
 })();

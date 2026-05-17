@@ -86,7 +86,6 @@
     var KEY_ACTIVE_AI = NS + 'active_ai';
     var KEY_RANDOM_AI = NS + 'random_ai';
     var activeAIId = localStorage.getItem(KEY_ACTIVE_AI);
-    var randomAIMode = localStorage.getItem(KEY_RANDOM_AI) === 'true';
 
     function getAcc(id) {
         var currentAccounts = window.App.accounts || [];
@@ -118,7 +117,13 @@
     window.App.aiConfig = aiConfig;
     window.App.AI_DEFAULT_PRESET = AI_DEFAULT_PRESET;
     window.App.activeAIId = activeAIId;
-    window.App.randomAIMode = randomAIMode;
+    // randomAIMode 直接读写 localStorage，确保任何路径都无法意外覆盖
+    Object.defineProperty(window.App, 'randomAIMode', {
+        get: function () { return localStorage.getItem(KEY_RANDOM_AI) === 'true'; },
+        set: function (v) { localStorage.setItem(KEY_RANDOM_AI, v ? 'true' : 'false'); },
+        enumerable: true,
+        configurable: true
+    });
     window.App.saveAccounts = saveAccounts;
     window.App.savePosts = savePosts;
     window.App.saveAIPresets = saveAIPresets;
