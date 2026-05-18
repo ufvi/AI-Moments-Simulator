@@ -26,7 +26,7 @@
         window.App.savePosts();
         inp.value = '';
         delete inp.dataset.fromAI;
-        window.App.updateCard(id);
+        window.App.updateCommentsSection(id);
         window.App.showToast('🤖 AI 已评论');
     }
 
@@ -35,7 +35,7 @@
         if (!post) return;
         post.comments.push({ id: 'cmt_ai_' + Date.now(), userId: aiUserId, text, timestamp: Date.now() });
         window.App.savePosts();
-        window.App.updateCard(postId);
+        window.App.updateCommentsSection(postId);
         window.App.showToast('🤖 AI 已评论');
     }
 
@@ -1003,7 +1003,22 @@
         window.App.savePosts();
         window.App.markLocalDirty && window.App.markLocalDirty();
         window.App.uploadToCloud && window.App.uploadToCloud(false);
-        window.App.renderTimeline(true);
+
+        // 手术式插入新卡片
+        var $timeline = document.getElementById('timeline');
+        if ($timeline) {
+            var emptyEl = $timeline.querySelector('.timeline-empty');
+            if (emptyEl) emptyEl.remove();
+            var div = document.createElement('div');
+            div.innerHTML = window.App.renderCard(newPost);
+            var card = div.firstElementChild;
+            var lastPinned = $timeline.querySelector('.pinned-card:last-of-type');
+            if (lastPinned) { lastPinned.after(card); } else { $timeline.prepend(card); }
+            window.App.observeMediaInContainer(card);
+            window.App.bindCardEvents();
+            window.App.renderedCount = (window.App.renderedCount || 0) + 1;
+        }
+
         window.App.showToast(`✅ ${aiAcc.nickname} 发帖成功！`);
     }
 
@@ -1208,7 +1223,22 @@
         window.App.savePosts();
         window.App.markLocalDirty && window.App.markLocalDirty();
         window.App.uploadToCloud && window.App.uploadToCloud(false);
-        window.App.renderTimeline(true);
+
+        // 手术式插入新卡片
+        var $timeline = document.getElementById('timeline');
+        if ($timeline) {
+            var emptyEl = $timeline.querySelector('.timeline-empty');
+            if (emptyEl) emptyEl.remove();
+            var div2 = document.createElement('div');
+            div2.innerHTML = window.App.renderCard(newPost);
+            var card2 = div2.firstElementChild;
+            var lastPinned2 = $timeline.querySelector('.pinned-card:last-of-type');
+            if (lastPinned2) { lastPinned2.after(card2); } else { $timeline.prepend(card2); }
+            window.App.observeMediaInContainer(card2);
+            window.App.bindCardEvents();
+            window.App.renderedCount = (window.App.renderedCount || 0) + 1;
+        }
+
         window.App.showToast(`✅ 已由 ${aiAcc.nickname} 代写发出！`);
     }
 

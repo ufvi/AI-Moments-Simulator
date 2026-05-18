@@ -208,7 +208,23 @@
         if ($btnPublish) $btnPublish.textContent = '发布';
         var $btnCancelEdit = $('#btnCancelEdit');
         if ($btnCancelEdit) $btnCancelEdit.style.display = 'none';
-        window.App.renderTimeline(true);
+        if (editId) {
+            window.App.updateCard(editId);
+        } else {
+            const $timeline = document.getElementById('timeline');
+            if ($timeline && newPost) {
+                const emptyEl = $timeline.querySelector('.timeline-empty');
+                if (emptyEl) emptyEl.remove();
+                const div = document.createElement('div');
+                div.innerHTML = window.App.renderCard(newPost);
+                const card = div.firstElementChild;
+                const lastPinned = $timeline.querySelector('.pinned-card:last-of-type');
+                if (lastPinned) { lastPinned.after(card); } else { $timeline.prepend(card); }
+                window.App.observeMediaInContainer(card);
+                window.App.bindCardEvents();
+                window.App.renderedCount = (window.App.renderedCount || 0) + 1;
+            }
+        }
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -217,6 +233,7 @@
             if (!window.App.publishFiles[i].mediaId) URL.revokeObjectURL(window.App.publishFiles[i].previewUrl);
         }
         window.App.publishFiles = [];
+        window.App.renderPublishPreview();
         var $pt = $('#publishText'); if ($pt) { $pt.value = ''; $pt.style.height = ''; $pt.style.overflowY = ''; }
         document.querySelector('.publish-area')?.classList.remove('expanded');
         var btnEx = document.getElementById('btnExpand');

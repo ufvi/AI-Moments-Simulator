@@ -345,6 +345,77 @@
             </div>`;
     }
 
+    // 只生成评论区的 HTML（.post-comments 容器 + 列表 + 折叠按钮）
+    function renderCommentsHtml(post) {
+        if (!post.comments || !post.comments.length) return '';
+        const shouldCollapse = post.comments.length > COMMENT_COLLAPSE_THRESHOLD;
+        const isExpanded = expandedPosts.has(post.id);
+        const hiddenComments = shouldCollapse ? post.comments.slice(0, -COMMENT_COLLAPSE_THRESHOLD) : [];
+        const visibleComments = shouldCollapse ? post.comments.slice(-COMMENT_COLLAPSE_THRESHOLD) : post.comments;
+        let html = '<div class="post-comments" data-post-id="' + post.id + '">';
+        if (shouldCollapse) {
+            html += '<div class="comments-collapsed' + (isExpanded ? ' expanded' : '') + '" id="collapsed-' + post.id + '">';
+            hiddenComments.forEach(c => { html += renderCommentItem(c, post.id); });
+            html += '</div>';
+        }
+        visibleComments.forEach(c => { html += renderCommentItem(c, post.id); });
+        if (shouldCollapse) {
+            html += '<button class="comments-toggle-btn comments-expand-btn" data-action="toggle-comments" data-post-id="' + post.id + '" style="' + (isExpanded ? 'display:none;' : '') + '">展开 <span class="toggle-count">' + hiddenComments.length + '</span> 条评论 <span class="toggle-arrow">▾</span></button>';
+            html += '<button class="comments-toggle-btn comments-collapse-btn" data-action="toggle-comments" data-post-id="' + post.id + '" style="' + (isExpanded ? '' : 'display:none;') + '">收起评论 <span class="toggle-arrow">▴</span></button>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // 手术式更新指定帖子的评论区
+    function updateCommentsSection(postId) {
+        const post = window.App.posts.find(p => p.id === postId);
+        if (!post) return;
+        const card = document.getElementById('post-' + postId);
+        if (!card) return;
+
+        const oldComments = card.querySelector('.post-comments');
+        const cmtsHtml = renderCommentsHtml(post);
+        let newComments = null;
+
+        if (cmtsHtml) {
+            const div = document.createElement('div');
+            div.innerHTML = cmtsHtml;
+            newComments = div.firstElementChild;
+
+            if (oldComments) {
+                oldComments.replaceWith(newComments);
+            } else {
+                // 0→N：插入到点赞栏或操作栏后面
+                const ref = card.querySelector('.post-likes-bar') || card.querySelector('.post-actions');
+                if (ref) ref.after(newComments);
+                else card.appendChild(newComments);
+            }
+        } else {
+            // N→0：移除评论区
+            if (oldComments) oldComments.remove();
+        }
+
+        // 更新 💬 计数按钮
+        const cmtBtn = card.querySelector('[data-action="focus-comment"]');
+        const cmtCnt = post.comments.length;
+        if (cmtBtn) cmtBtn.innerHTML = '💬 ' + (cmtCnt || '评论');
+
+        // 局部重绑评论事件（复制/删除/折叠）
+        if (newComments) {
+            newComments.querySelectorAll('[data-action="copy-comment"]').forEach(b => {
+                b.onclick = (e) => { e.stopPropagation(); window.App.copyComment(b.dataset.postId, b.dataset.commentId); };
+            });
+            newComments.querySelectorAll('[data-action="delete-comment"]').forEach(b => {
+                b.onclick = (e) => { e.stopPropagation(); window.App.deleteComment(b.dataset.postId, b.dataset.commentId); };
+            });
+            newComments.querySelectorAll('[data-action="toggle-comments"]').forEach(b => {
+                b.onclick = () => window.App.toggleCommentCollapse(b.dataset.postId);
+            });
+            window.App.observeMediaInContainer(newComments);
+        }
+    }
+
     function renderCard(post) {
         let cmtsHtml = '';
         const author = window.App.getAcc(post.userId) || { nickname: '未知用户', avatar: '', avatarBg: '#ccc' };
@@ -376,27 +447,7 @@
         (post.videos || []).forEach(mid => mediaHtml +=
             `<div class="post-video-wrapper"><video controls data-media-id="${mid}"></video></div>`);
 
-        if (post.comments.length) {
-            const shouldCollapse = post.comments.length > COMMENT_COLLAPSE_THRESHOLD;
-            const isExpanded = expandedPosts.has(post.id);
-            const hiddenComments = shouldCollapse ? post.comments.slice(0, -COMMENT_COLLAPSE_THRESHOLD) : [];
-            const visibleComments = shouldCollapse ? post.comments.slice(-COMMENT_COLLAPSE_THRESHOLD) : post.comments;
-            cmtsHtml = '<div class="post-comments" data-post-id="' + post.id + '">';
-            // 1. 折叠区域（旧评论，默认隐藏）
-            if (shouldCollapse) {
-                cmtsHtml += '<div class="comments-collapsed' + (isExpanded ? ' expanded' : '') + '" id="collapsed-' + post.id + '">';
-                hiddenComments.forEach(c => { cmtsHtml += renderCommentItem(c, post.id); });
-                cmtsHtml += '</div>';
-            }
-            // 2. 可见评论（最新的几条）
-            visibleComments.forEach(c => { cmtsHtml += renderCommentItem(c, post.id); });
-            // 3. 展开/收起按钮（放在最底部）
-            if (shouldCollapse) {
-                cmtsHtml += '<button class="comments-toggle-btn comments-expand-btn" data-action="toggle-comments" data-post-id="' + post.id + '" style="' + (isExpanded ? 'display:none;' : '') + '">展开 <span class="toggle-count">' + hiddenComments.length + '</span> 条评论 <span class="toggle-arrow">▾</span></button>';
-                cmtsHtml += '<button class="comments-toggle-btn comments-collapse-btn" data-action="toggle-comments" data-post-id="' + post.id + '" style="' + (isExpanded ? '' : 'display:none;') + '">收起评论 <span class="toggle-arrow">▴</span></button>';
-            }
-            cmtsHtml += '</div>';
-        }
+        cmtsHtml = renderCommentsHtml(post);
 
         const curUser = window.App.getCurAcc();
         let curAvHtml;
@@ -514,9 +565,55 @@
     function togglePin(id) {
         const post = window.App.posts.find(p => p.id === id);
         if (!post) return;
+        const card = document.getElementById('post-' + id);
+        const $timeline = document.getElementById('timeline');
+        if (!card || !$timeline) return;
+
         post.pinned = !post.pinned;
         window.App.savePosts();
-        renderTimeline(true);
+
+        // 更新按钮文字（如果菜单是展开的）
+        const pinBtn = document.querySelector('#postMenu-' + id + ' [data-action="toggle-pin"]');
+        if (pinBtn) pinBtn.textContent = post.pinned ? '取消置顶' : '📌 置顶';
+
+        // 更新卡片的 pinned-card class
+        card.classList.toggle('pinned-card', post.pinned);
+
+        // 更新 pin-badge
+        var badge = card.querySelector('.pin-badge');
+        if (post.pinned) {
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.className = 'pin-badge';
+                badge.textContent = '📌';
+                card.prepend(badge);
+            }
+        } else {
+            if (badge) badge.remove();
+        }
+
+        // 移动卡片位置
+        if (post.pinned) {
+            // 放到最前面（所有置顶帖之前）
+            var firstPinned = $timeline.querySelector('.pinned-card');
+            if (firstPinned && firstPinned !== card) {
+                $timeline.insertBefore(card, firstPinned);
+            } else {
+                $timeline.prepend(card);
+            }
+        } else {
+            // 放到最后一个置顶帖后面
+            var afterLastPinned = null;
+            var allPinned = $timeline.querySelectorAll('.pinned-card');
+            if (allPinned.length) {
+                afterLastPinned = $timeline.querySelector('.pinned-card:last-of-type');
+                if (afterLastPinned && afterLastPinned !== card) {
+                    afterLastPinned.after(card);
+                }
+            } else {
+                $timeline.prepend(card);
+            }
+        }
     }
 
     function toggleLike(id) {
@@ -569,11 +666,11 @@
         if (!post) return;
         post.comments.push({ id: 'cmt_' + Date.now(), userId: window.App.currentId, text, timestamp: Date.now() });
         window.App.savePosts();
-        updateCard(id);
+        inp.value = '';
+        updateCommentsSection(id);
         // 移动端不自动聚焦，避免弹出键盘
         if (!window.matchMedia('not (pointer: fine)').matches) {
-            const newInp = document.getElementById('commentInput-' + id);
-            if (newInp) newInp.focus({ preventScroll: true });
+            inp.focus({ preventScroll: true });
         }
     }
 
@@ -720,7 +817,7 @@
         if (!post) return;
         post.comments = post.comments.filter(c => c.id !== commentId);
         window.App.savePosts();
-        updateCard(postId);
+        updateCommentsSection(postId);
     }
 
     function toggleCommentCollapse(postId) {
@@ -892,6 +989,7 @@
     window.App.observeMediaInContainer = observeMediaInContainer;
     window.App.bindCardEvents = bindCardEvents;
     window.App.updateCard = updateCard;
+    window.App.updateCommentsSection = updateCommentsSection;
     window.App.toggleMenu = toggleMenu;
     window.App.togglePin = togglePin;
     window.App.toggleLike = toggleLike;

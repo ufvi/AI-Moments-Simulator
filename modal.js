@@ -386,7 +386,14 @@
             window.App.posts = window.App.posts.filter(function (p) { return p.id !== id; });
             // savePosts 内部已调用 markLocalDirty + uploadToCloud
             window.App.savePosts();
-            window.App.renderTimeline(true);
+            var card = document.getElementById('post-' + id);
+            if (card) card.remove();
+            window.App.renderedCount = Math.max(0, (window.App.renderedCount || 0) - 1);
+            const $timeline = document.getElementById('timeline');
+            if ($timeline && !$timeline.querySelector('.post-card') && (!$timeline.querySelector('.timeline-empty'))) {
+                $timeline.innerHTML = '<div class="timeline-empty"><span class="empty-icon">🌱</span><p>还没有动态</p></div>';
+                window.App.renderedCount = 0;
+            }
         };
         overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
     }
