@@ -356,10 +356,16 @@
         const isAI = cu?.isAI;
 
         // Build small avatar
-        const avText = cu.avatarText || cu.nickname?.charAt(0)?.toUpperCase() || '?';
-        const isEmoji = cu.avatarText && window.App.isEmoji(cu.avatarText);
-        const avFontSize = isEmoji ? '14px' : '11px';
-        const avHtml = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:${avFontSize}">${window.App.escapeHtml(avText)}</div>`;
+        let avHtml;
+        if (cu.avatarText) {
+            const isEmoji = window.App.isEmoji(cu.avatarText);
+            const avFontSize = isEmoji ? '14px' : '11px';
+            avHtml = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:${avFontSize}">${window.App.escapeHtml(cu.avatarText)}</div>`;
+        } else if (cu.avatar && cu.avatar.startsWith('data:')) {
+            avHtml = `<img src="${cu.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.14);margin-top:1px;"><div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};display:none;">${cu.nickname?.charAt(0)?.toUpperCase() || '?'}</div>`;
+        } else {
+            avHtml = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:11px">${cu.nickname?.charAt(0)?.toUpperCase() || '?'}</div>`;
+        }
 
         return `<div class="comment-item${isAI ? ' ai-comment' : ''}">
             ${avHtml}
