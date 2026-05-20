@@ -49,13 +49,13 @@
             : `<div class="post-avatar-placeholder" style="width:36px;height:36px;font-size:14px;background:${aiAcc.avatarBg || '#6c5ce7'};">${window.App.escapeHtml(aiAcc.avatarText || aiAcc.nickname?.charAt(0) || 'A')}</div>`;
 
         overlay.innerHTML = `
-            <div class="modal-dialog ai-comment-modal" style="max-width:400px;">
+            <div class="modal-dialog ai-comment-modal">
                 <div class="ai-comment-modal-header">
                     ${avatarHtml}
                     <span class="ai-comment-modal-name">${window.App.escapeHtml(aiAcc.nickname)}</span>
                     <span class="ai-comment-modal-badge">AI</span>
                 </div>
-                <textarea class="ai-comment-modal-textarea" id="aiCommentModalText-${postId}" maxlength="500">${window.App.escapeHtml(reply)}</textarea>
+                <textarea class="ai-comment-modal-textarea" id="aiCommentModalText-${postId}" maxlength="5000">${window.App.escapeHtml(reply)}</textarea>
                 <div class="ai-comment-modal-actions">
                     <button class="btn btn-cancel" id="aiCommentModalRegen-${postId}">🔄 重新生成</button>
                     <div class="ai-comment-modal-right">
@@ -192,7 +192,7 @@
             const candidates = aiAccounts.filter(a => (a.activity ?? 1) > 0);
             if (candidates.length === 0) {
                 window.App.showToast('⚠️ 所有AI活跃度都为0，无法随机抽取');
-                if (btn) { btn.disabled = false; btn.textContent = '🤖 生成'; }
+                if (btn) { btn.disabled = false; btn.textContent = '🤖'; }
                 return;
             }
             const totalWeight = candidates.reduce((sum, a) => sum + (a.activity ?? 1), 0);
@@ -389,7 +389,7 @@
             if ($thinkingBar) $thinkingBar.classList.remove('visible');
             if (btn) {
                 btn.disabled = false;
-                btn.textContent = '🤖 生成';
+                btn.textContent = '🤖';
             }
             if (window.App.randomAIMode) {
                 window.App.renderHeader();
@@ -615,7 +615,7 @@
         overlay.className = 'modal-overlay';
         overlay.style.display = 'flex';
         overlay.innerHTML = `
-            <div class="modal-dialog" style="max-width:340px;">
+            <div class="modal-dialog">
                 <h3>🤖 AI 发帖</h3>
                 <label style="font-size:13px;color:var(--text);">选择AI角色</label>
 <select id="aiPostAccountSelect"
@@ -640,6 +640,16 @@
                                font-weight:600;line-height:1.4;white-space:nowrap;transition:opacity .2s;">
                         ✨ AI生成
                     </button>
+                </div>
+                <div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap;">
+                    <button class="btn ai-situation-preset" data-prompt="记录生活日常，比如吃饭、旅行、自拍、宠物、天气或今天发生的小事，轻松自然">生活记录</button>
+                    <button class="btn ai-situation-preset" data-prompt="分享你遇到的有趣或不寻常的事情，激发好奇心">奇特见闻</button>
+                    <button class="btn ai-situation-preset" data-prompt="表达此刻情绪，深夜感慨、歌词、失眠、孤独或释怀，走心真实">情绪表达</button>
+                    <button class="btn ai-situation-preset" data-prompt="经营个人形象，健身、阅读、自律、极简生活或精致穿搭，展示你想成为的人">人设经营</button>
+                    <button class="btn ai-situation-preset" data-prompt="发起社交互动，集赞、投票、求推荐、玩梗或@朋友，让大家参与进来">社交互动</button>
+                    <button class="btn ai-situation-preset" data-prompt="低调展示生活亮点，礼物、成绩、旅行打卡、高端场所，不经意间流露">炫耀展示</button>
+                    <button class="btn ai-situation-preset" data-prompt="输出观点见解，行业分析、读书摘录、科技趋势，建立专业感">知识输出</button>
+                    <button class="btn ai-situation-preset" data-prompt="发疯文学、黑色幽默、意识流，莫名其妙但有趣">抽象玩梗</button>
                 </div>
                 <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--text);cursor:pointer;user-select:none;">
                     <input type="checkbox" id="aiPostPersonalized" checked
@@ -683,7 +693,36 @@
         const personalizedChk = overlay.querySelector('#aiPostPersonalized');
         const accountSelect = overlay.querySelector('#aiPostAccountSelect');
 
-        inp.focus();
+        // ── 预设情境按钮 ────────────────────────────────────
+        let activePresetBtn = null;
+        overlay.querySelectorAll('.ai-situation-preset').forEach(btn => {
+            btn.onclick = () => {
+                if (activePresetBtn && activePresetBtn !== btn) {
+                    activePresetBtn.classList.remove('active');
+                }
+                if (activePresetBtn === btn) {
+                    // 再次点击取消选中
+                    activePresetBtn.classList.remove('active');
+                    activePresetBtn = null;
+                    inp.value = '';
+                    return;
+                }
+                activePresetBtn = btn;
+                btn.classList.add('active');
+                inp.value = btn.dataset.prompt;
+                // 自动滚动到最底部让用户看到完整提示词
+                inp.scrollTop = inp.scrollHeight;
+            };
+        });
+
+        inp.addEventListener('input', () => {
+            // 用户手动编辑时取消预设高亮
+            if (activePresetBtn) {
+                activePresetBtn.classList.remove('active');
+                activePresetBtn = null;
+            }
+        });
+
         overlay.querySelector('#aiPostCancel').onclick = () => overlay.remove();
         overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 
@@ -715,9 +754,9 @@
                 let userContent;
                 if (personalized) {
                     const personaDesc = chosenAcc.systemPrompt ? `该角色的人设是：${chosenAcc.systemPrompt}。` : '';
-                    userContent = `角色名称："${chosenAcc.nickname}"。${personaDesc}${themeDesc}请生成一句具体、生动且符合该角色身份的生活情境（20字以内），角度新颖有趣，避免过于日常普通。${recentHint}`;
+                    userContent = `角色名称："${chosenAcc.nickname}"。${personaDesc}${themeDesc}请生成一句具体、生动且符合该角色身份的生活情境，角度新颖有趣。${recentHint}`;
                 } else {
-                    userContent = `${themeDesc}请生成一句具体、生动的生活情境（20字以内），角度新颖有趣，适合发朋友圈，避免过于日常普通。${recentHint}`;
+                    userContent = `${themeDesc}请生成一句具体、生动的生活情境，角度新颖有趣，适合发朋友圈。${recentHint}`;
                 }
 
                 const situationMessages = [
@@ -755,7 +794,6 @@
                     : data.choices?.[0]?.message?.content)?.trim();
                 if (!situation) throw new Error('未生成内容');
                 inp.value = situation;
-                inp.focus();
             } catch (e) {
                 clearTimeout(tid);
                 if (e.name === 'AbortError') window.App.showToast('⏰ 请求超时');
@@ -771,12 +809,14 @@
             const chosenId = accountSelect.value;
             const chosenAcc = window.App.getAcc(chosenId) || selectedAIAcc;
             const personalized = personalizedChk.checked;
-            overlay.remove();
-            await generateAIPost(chosenAcc, theme, selectedCount, personalized);
+            overlay.style.display = 'none';
+            await generateAIPost(chosenAcc, theme, selectedCount, personalized, () => {
+                overlay.style.display = 'flex';
+            });
         };
     }
 
-    async function generateAIPost(aiAcc, theme, count = 1, personalized = true) {
+    async function generateAIPost(aiAcc, theme, count = 1, personalized = true, onBack) {
         if (!window.App.aiConfig.endpoint || !window.App.aiConfig.model) return;
 
         const $thinkingBar = $('#aiThinkingBar');
@@ -857,9 +897,9 @@
                 let userContent;
                 if (personalized) {
                     const personaDesc = aiAcc.systemPrompt ? `该角色的人设是：${aiAcc.systemPrompt}。` : '';
-                    userContent = `角色名称："${aiAcc.nickname}"。${personaDesc}主题随机，请生成一句具体、生动且符合该角色身份的生活情境（20字以内），角度新颖有趣，避免过于日常普通。${recentHint}`;
+                    userContent = `角色名称："${aiAcc.nickname}"。${personaDesc}主题随机，请生成一句具体、生动且符合该角色身份的生活情，角度新颖有趣。${recentHint}`;
                 } else {
-                    userContent = `主题随机，请生成一句具体、生动的生活情境（20字以内），角度新颖有趣，适合发朋友圈，避免过于日常普通。${recentHint}`;
+                    userContent = `主题随机，请生成一句具体、生动的生活情境，角度新颖有趣，适合发朋友圈。${recentHint}`;
                 }
                 const situationMessages = [
                     { role: 'system', content: '你是一个情境生成助手。根据要求，生成一句具体的生活情境，用于驱动发朋友圈，不要解释，只输出情境本身。' },
@@ -873,7 +913,7 @@
             const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
             const style = aiAcc.style ? ` 风格要求：${aiAcc.style}。` : '';
             const makePostMessages = () => ([
-                { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化，不超过150字。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
+                { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
                 { role: 'user', content: `情境：${situation}` }
             ]);
 
@@ -888,17 +928,18 @@
             if ($thinkingBar) $thinkingBar.classList.remove('visible');
 
             const asDrafts = drafts.map((text, i) => ({ text, label: drafts.length === 1 ? aiAcc.nickname : `版本 ${i + 1}` }));
-            if (drafts.length === 1) {
-                publishAIPost(aiAcc, asDrafts[0].text);
-            } else {
-                showDraftPickerModal(
-                    '🎨 选择一个版本',
-                    `以 <b>${window.App.escapeHtml(aiAcc.nickname)}</b> 身份发帖，选你最满意的`,
-                    asDrafts,
-                    (d) => publishAIPost(aiAcc, d.text),
-                    (d) => prefillPublishBox(aiAcc, d.text)
-                );
-            }
+            showDraftPickerModal(
+                '🎨 选择一个版本',
+                `以 <b>${window.App.escapeHtml(aiAcc.nickname)}</b> 身份发帖，选你最满意的`,
+                asDrafts,
+                (d) => publishAIPost(aiAcc, d.text),
+                (d) => prefillPublishBox(aiAcc, d.text),
+                async (draft) => {
+                    const newText = await callAPI(makePostMessages(), 2000);
+                    return newText || draft.text;
+                },
+                onBack
+            );
 
         } catch (e) {
             if ($thinkingBar) $thinkingBar.classList.remove('visible');
@@ -909,7 +950,7 @@
 
     // drafts: Array<{ text, label, aiAcc? }> — label 显示在卡片顶部（如"小乖乖"或"版本 1"）
     // onUse(draft): 直接发布回调；onEdit(draft): 编辑后发回调；onRegen(draft): 可选，重新生成回调，返回 Promise<string>
-    function showDraftPickerModal(title, subtitle, drafts, onUse, onEdit, onRegen) {
+    function showDraftPickerModal(title, subtitle, drafts, onUse, onEdit, onRegen, onBack) {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
         overlay.style.display = 'flex';
@@ -934,12 +975,13 @@
             </div>`).join('');
 
         overlay.innerHTML = `
-            <div class="modal-dialog" style="max-width:400px;overflow:hidden;padding:0;">
+            <div class="modal-dialog" style="overflow:hidden;padding:0;">
                 <div style="max-height:80vh;overflow-y:auto;padding:20px;">
                     <h3>${title}</h3>
                     <p style="font-size:13px;color:var(--text-light);margin:-4px 0 14px;">${subtitle}</p>
                     ${cardsHtml}
                     <div class="btn-row" style="margin-top:4px;">
+                        ${typeof onBack === 'function' ? '<button class="btn btn-cancel" id="draftPickerBack">← 返回</button>' : ''}
                         <button class="btn btn-cancel" id="draftPickerCancel">取消</button>
                     </div>
                 </div>
@@ -988,6 +1030,12 @@
         }
 
         overlay.querySelector('#draftPickerCancel').onclick = () => overlay.remove();
+        if (typeof onBack === 'function') {
+            overlay.querySelector('#draftPickerBack').onclick = () => {
+                overlay.remove();
+                onBack();
+            };
+        }
         overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     }
 
@@ -1171,7 +1219,7 @@
                     const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
                     const style = aiAcc.style ? ` 风格要求：${aiAcc.style}。` : '';
                     const msgs = [
-                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化，不超过150字。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
+                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
                         { role: 'user', content: `情境：${ghostInput}` }
                     ];
                     return callAPI(msgs, 2000).then(text => ({ text, aiAcc }));
@@ -1196,7 +1244,7 @@
                     const basePrompt = draft.aiAcc.systemPrompt || '你是一个友善的朋友';
                     const style = draft.aiAcc.style ? ` 风格要求：${draft.aiAcc.style}。` : '';
                     const msgs = [
-                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化，不超过150字。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
+                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
                         { role: 'user', content: `情境：${ghostInput}` }
                     ];
                     return await callAPI(msgs, 2000);

@@ -1574,6 +1574,15 @@ body {
     }
 }
 
+@media (min-width: 1100px) {
+    .modal-dialog {
+        max-width: 520px;
+    }
+    .modal-dialog.ai-comment-modal {
+        max-width: 480px;
+    }
+}
+
 .modal-dialog::-webkit-scrollbar {
     width: 4px;
 }
@@ -1664,6 +1673,29 @@ body {
 .modal-dialog .btn-danger {
     background: var(--card-bg);
     color: var(--danger);
+}
+
+.modal-dialog .ai-situation-preset {
+    padding: 4px 12px;
+    font-size: 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--input-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all var(--transition-bounce);
+    line-height: 1.6;
+}
+.modal-dialog .ai-situation-preset:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.modal-dialog .ai-situation-preset.active {
+    background: linear-gradient(135deg, var(--accent), #e8a87c);
+    border-color: transparent;
+    color: #fff;
+}
     border: 1.5px solid var(--danger);
 }
 

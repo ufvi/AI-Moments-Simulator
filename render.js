@@ -114,7 +114,7 @@
             var aiAvIsEmoji = window.App.isEmoji(aiAvText);
             var count = aiCommentCounts[a.id] || 0;
             html += '<div class="sidebar-ai-account-item' + (isActive ? ' active' : '') + '" data-ai-id="' + a.id + '">' +
-                '<div class="avatar-placeholder-sm" style="background:' + a.avatarBg + ';font-size:' + (aiAvIsEmoji ? '24px' : '17px') + ';flex-shrink:0;">' + window.App.escapeHtml(aiAvText) + '</div>' +
+                '<div class="avatar-placeholder-sm" style="background:' + a.avatarBg + ';font-size:' + (aiAvIsEmoji ? '18px' : '14px') + ';flex-shrink:0;">' + window.App.escapeHtml(aiAvText) + '</div>' +
                 '<span class="sidebar-ai-account-name">' + window.App.escapeHtml(a.nickname) + '</span>' +
                 '<span class="sidebar-comment-count">' + count + '</span>' +
                 (isActive ? '<span class="sidebar-ai-check">✓</span>' : '') +
@@ -251,7 +251,7 @@
             const aiAvText = a.avatarText || '🤖';
             const aiAvIsEmoji = window.App.isEmoji(aiAvText);
             return `<div class="account-dropdown-item${isActive ? ' active' : ''}" data-ai-id="${a.id}" style="${isActive ? 'background:var(--ai-purple-light,rgba(124,92,252,0.1));' : ''}">
-            <div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:${aiAvIsEmoji ? '24px' : '17px'};flex-shrink:0;">${window.App.escapeHtml(aiAvText)}</div>
+            <div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:${aiAvIsEmoji ? '18px' : '14px'};flex-shrink:0;">${window.App.escapeHtml(aiAvText)}</div>
             <span style="font-weight:${isActive ? '700' : '500'}">${window.App.escapeHtml(a.nickname)}${window.App.randomAIMode ? actBadge : ''}</span>
             <span style="margin-left:auto;color:var(--text-light);font-size:11px;white-space:nowrap;background:var(--btn-bg);padding:2px 8px;border-radius:10px;">${count}条评论</span>
             ${isActive ? '<span class="check-mark" style="color:var(--ai-purple);">✓</span>' : ''}
@@ -318,6 +318,15 @@
                 });
             }, 0);
         }
+        if (!Array.isArray(window.App.posts) || !window.App.posts.length) {
+            if ($loader) $loader.style.display = 'none';
+            if ($timeline.innerHTML === '') {
+                $timeline.innerHTML = '<div class="timeline-empty"><span class="empty-icon">🌱</span><p>还没有动态，来发第一条吧</p></div>';
+            }
+            renderedCount = 0;
+            window.App.renderedCount = 0;
+            return;
+        }
         const sorted = [...window.App.posts].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.timestamp - a.timestamp);
         const toRender = sorted.slice(renderedCount, renderedCount + PAGE_SIZE);
         if (toRender.length === 0) {
@@ -336,6 +345,7 @@
             $timeline.appendChild(div.firstElementChild);
         });
         renderedCount += toRender.length;
+        window.App.renderedCount = renderedCount;
         if ($loader) $loader.style.display = renderedCount >= sorted.length ? 'none' : 'block';
         bindCardEvents();
         observeMediaInContainer($timeline);
@@ -505,8 +515,8 @@
         ${mediaHtml}
         <div class="post-actions"><button class="action-btn${isLiked ? ' liked' : ''}" data-action="like" data-post-id="${post.id}">${isLiked ? heartFilled : heartOutline}${likeCnt ? ' ' + likeCnt : ' 点赞'}</button><button class="action-btn btn-comment" data-action="focus-comment" data-post-id="${post.id}">${chatIcon}${cmtCnt ? ' ' + cmtCnt : ' 评论'}</button></div>
         ${likesBadge}${cmtsHtml}
-        <div class="comment-input-row">${curAvHtml}<textarea placeholder="写评论…" maxlength="500" id="commentInput-${post.id}" rows="1"></textarea>
-<button class="ai-generate-btn" data-action="ai-comment" data-post-id="${post.id}">🤖 生成</button>
+        <div class="comment-input-row">${curAvHtml}<textarea placeholder="写评论…" maxlength="5000" id="commentInput-${post.id}" rows="1"></textarea>
+<button class="ai-generate-btn" data-action="ai-comment" data-post-id="${post.id}">🤖</button>
 <button class="comment-submit-btn" data-action="submit-comment" data-post-id="${post.id}"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/></svg></button>`;
     }
 
@@ -802,7 +812,7 @@
             '<button id="mobileCommentEmoji" style="font-size:19px;background:none;border:none;padding:4px 6px;cursor:pointer;border-radius:8px;line-height:1;">😀</button>' +
             '<button id="mobileCommentSend" style="margin-left:auto;background:linear-gradient(135deg,#7c5cfc,#c77dff);color:#fff;border:none;border-radius:20px;padding:7px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:0.3px;box-shadow:0 3px 12px rgba(124,92,252,0.35);">发送</button>' +
             '</div>' +
-            '<textarea id="mobileCommentInput" placeholder="写评论…" maxlength="500" ' +
+            '<textarea id="mobileCommentInput" placeholder="写评论…" maxlength="5000" ' +
             'style="width:100%;min-height:76px;max-height:140px;resize:none;border:1.5px solid var(--border,#e6e9ef);border-radius:14px;outline:none;' +
             'background:var(--input-bg,#f7f8fa);color:var(--text,#1a1a2e);font-size:16px;line-height:1.5;box-sizing:border-box;padding:10px 13px;font-family:inherit;transition:border-color 0.18s;">' +
             window.App.escapeHtml(existingText) +

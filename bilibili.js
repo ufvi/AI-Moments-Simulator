@@ -21,7 +21,7 @@
      * 从 bilibili 视频 URL 中提取 bvid
      */
     function extractBvid(url) {
-        var m = url.match(/bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/i);
+        var m = url.match(/(?:www\.|m\.)?bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/i);
         return m ? m[1] : null;
     }
 
@@ -165,7 +165,7 @@
         // 模式 B: 裸 bilibili.com/video/BV...?p=2
         // 模式 C: b23.tv/xxx
         text = text.replace(
-            /(?:【([\s\S]*)】\s*)?https?:\/\/(?:www\.)?(?:bilibili\.com\/video\/(BV[a-zA-Z0-9]+)|b23\.tv\/([a-zA-Z0-9]+))([^\s<]*)/gi,
+            /(?:【([\s\S]*)】\s*)?https?:\/\/(?:www\.|m\.)?(?:bilibili\.com\/video\/(BV[a-zA-Z0-9]+)|b23\.tv\/([a-zA-Z0-9]+))([^\s<]*)/gi,
             function (match, linkText, bvid, shortCode, queryStr) {
                 if (bvid) {
                     // 从原链接提取 p 参数（分集）

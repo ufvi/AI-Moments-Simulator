@@ -1179,14 +1179,29 @@
 
     window.addEventListener('scroll', function () {
         if (window.App.searchActive) return;
+        if (_isLoadingMore) return;
         var posts = window.App.posts || [];
         var renderedCount = window.App.renderedCount || 0;
-        if (renderedCount >= posts.length) return;
+        if (renderedCount >= posts.length) {
+            var loader = document.querySelector('#loaderIndicator');
+            if (loader) loader.style.display = 'none';
+            return;
+        }
         var scrollBottom = window.scrollY + window.innerHeight;
         if (scrollBottom >= document.body.offsetHeight - 150) {
             var loader = document.querySelector('#loaderIndicator');
             if (loader) loader.style.display = 'block';
-            setTimeout(function () { window.App.renderTimeline(false); }, 200);
+            setTimeout(function () {
+                try {
+                    window.App.renderTimeline(false);
+                } catch (e) {
+                    console.error('加载更多失败:', e);
+                    var loader2 = document.querySelector('#loaderIndicator');
+                    if (loader2) loader2.style.display = 'none';
+                } finally {
+                    _isLoadingMore = false;   // 解锁
+                }
+            }, 200);
         }
     }, { passive: true });
 
