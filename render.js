@@ -20,7 +20,7 @@
         } else {
             if (acc.avatarText) {
                 $headerAvatar.innerHTML =
-                    `<div class="header-avatar-placeholder" style="background:${acc.avatarBg};font-size:${window.App.isEmoji(acc.avatarText) ? '20px' : '15px'}">${window.App.escapeHtml(acc.avatarText)}</div>`;
+                    `<div class="header-avatar-placeholder" style="background:${acc.avatarBg};font-size:${window.App.isEmoji(acc.avatarText) ? '26px' : '20px'}">${window.App.escapeHtml(acc.avatarText)}</div>`;
             } else if (acc.avatar && acc.avatar.startsWith('data:')) {
                 $headerAvatar.innerHTML =
                     `<img class="header-avatar" src="${acc.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="header-avatar-placeholder" style="display:none;background:${acc.avatarBg}">${acc.nickname.charAt(0).toUpperCase()}</div>`;
@@ -48,7 +48,7 @@
             if (!acc) {
                 sbAvHtml = '<div class="header-avatar-placeholder" style="background:#ccc;">?</div>';
             } else if (acc.avatarText) {
-                sbAvHtml = '<div class="header-avatar-placeholder" style="background:' + acc.avatarBg + ';font-size:' + (window.App.isEmoji(acc.avatarText) ? '20px' : '15px') + '">' + window.App.escapeHtml(acc.avatarText) + '</div>';
+                sbAvHtml = '<div class="header-avatar-placeholder" style="background:' + acc.avatarBg + ';font-size:' + (window.App.isEmoji(acc.avatarText) ? '26px' : '20px') + '">' + window.App.escapeHtml(acc.avatarText) + '</div>';
             } else if (acc.avatar && acc.avatar.startsWith('data:')) {
                 sbAvHtml = '<img class="header-avatar" src="' + acc.avatar + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">' +
                     '<div class="header-avatar-placeholder" style="display:none;background:' + acc.avatarBg + '">' + acc.nickname.charAt(0).toUpperCase() + '</div>';
@@ -78,10 +78,10 @@
 
         if (!aiAccounts || aiAccounts.length === 0) {
             container.innerHTML =
-                '<div style="padding:12px 8px;text-align:center;">' +
-                '<div style="font-size:12px;color:var(--text-light);margin-bottom:10px;">暂无 AI 账号</div>' +
-                '<button id="sidebarAddFirstAI" style="background:var(--ai-purple,#7c5cfc);color:#fff;border:none;' +
-                'border-radius:16px;padding:6px 18px;font-size:13px;cursor:pointer;">+ 添加 AI 人设</button>' +
+                '<div style="padding:14px 8px 10px;text-align:center;">' +
+                '<div style="font-size:12px;color:var(--text-light);margin-bottom:12px;line-height:1.6;">暂无 AI 账号<br>添加一个虚拟评论员吧</div>' +
+                '<button id="sidebarAddFirstAI" style="background:var(--ai-gradient,linear-gradient(135deg,#7c5cfc,#c77dff));color:#fff;border:none;' +
+                'border-radius:20px;padding:7px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 3px 12px rgba(124,92,252,0.3);">+ 添加 AI 人设</button>' +
                 '</div>';
             setTimeout(function () {
                 var btn = document.getElementById('sidebarAddFirstAI');
@@ -98,21 +98,31 @@
             '<div class="toggle-switch' + (window.App.randomAIMode ? ' active' : '') + '" id="sidebarRandomAIToggleSwitch"></div>' +
             '</div>';
 
-        // AI 账号列表
+        // AI 账号列表 —— 先统计评论数
+        var aiCommentCounts = {};
+        aiAccounts.forEach(function (a) { aiCommentCounts[a.id] = 0; });
+        window.App.posts.forEach(function (p) {
+            p.comments.forEach(function (c) {
+                if (aiCommentCounts[c.userId] !== undefined) {
+                    aiCommentCounts[c.userId]++;
+                }
+            });
+        });
         aiAccounts.forEach(function (a) {
             var isActive = a.id === window.App.activeAIId;
             var aiAvText = a.avatarText || '🤖';
             var aiAvIsEmoji = window.App.isEmoji(aiAvText);
-            var act = a.activity ?? 1;
+            var count = aiCommentCounts[a.id] || 0;
             html += '<div class="sidebar-ai-account-item' + (isActive ? ' active' : '') + '" data-ai-id="' + a.id + '">' +
-                '<div class="avatar-placeholder-sm" style="background:' + a.avatarBg + ';font-size:' + (aiAvIsEmoji ? '18px' : '13px') + ';flex-shrink:0;">' + window.App.escapeHtml(aiAvText) + '</div>' +
+                '<div class="avatar-placeholder-sm" style="background:' + a.avatarBg + ';font-size:' + (aiAvIsEmoji ? '24px' : '17px') + ';flex-shrink:0;">' + window.App.escapeHtml(aiAvText) + '</div>' +
                 '<span class="sidebar-ai-account-name">' + window.App.escapeHtml(a.nickname) + '</span>' +
+                '<span class="sidebar-comment-count">' + count + '</span>' +
                 (isActive ? '<span class="sidebar-ai-check">✓</span>' : '') +
                 '<span class="account-dropdown-edit" data-action="edit-ai" data-account-id="' + a.id + '">✎</span>' +
                 '</div>';
         });
 
-        html += '<div class="account-dropdown-add" id="sidebarAddAIAccount" style="color:var(--ai-purple);">+ 添加 AI 人设</div>';
+        html += '<div class="account-dropdown-add" id="sidebarAddAIAccount" style="color:var(--ai-purple);font-weight:700;">+ 添加 AI 人设</div>';
 
         container.innerHTML = html;
 
@@ -185,13 +195,13 @@
         // 按发帖数从高到低排序
         const sorted = [...normal].sort((a, b) => (postCounts[b.id] || 0) - (postCounts[a.id] || 0));
 
-        let html = `<div style="padding:6px 14px 4px;font-size:11px;color:var(--text-light);font-weight:600;letter-spacing:.5px;">👤 普通账号</div>`;
+        let html = `<div style="padding:8px 14px 5px;font-size:11px;color:var(--text-light);font-weight:700;letter-spacing:.8px;text-transform:uppercase;">👤 普通账号</div>`;
         html += sorted.map(a => {
             const isActive = a.id === window.App.currentId;
             const postCount = postCounts[a.id] || 0;
             let avHtml;
             if (a.avatarText) {
-                avHtml = `<div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:${window.App.isEmoji(a.avatarText) ? '18px' : '12px'}">${window.App.escapeHtml(a.avatarText)}</div>`;
+                avHtml = `<div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:${window.App.isEmoji(a.avatarText) ? '24px' : '16px'}">${window.App.escapeHtml(a.avatarText)}</div>`;
             } else if (a.avatar?.startsWith('data:')) {
                 avHtml = `<img class="avatar-sm" src="${a.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="avatar-placeholder-sm" style="display:none;background:${a.avatarBg}">${a.nickname.charAt(0).toUpperCase()}</div>`;
             } else {
@@ -199,8 +209,8 @@
             }
             return `<div class="account-dropdown-item${isActive ? ' active' : ''}" data-account-id="${a.id}">
             ${avHtml}
-            <span>${window.App.escapeHtml(a.nickname)}</span>
-            <span style="margin-left:auto;color:var(--text-light);font-size:11px;white-space:nowrap;">${postCount}条动态</span>
+            <span style="font-weight:${isActive ? '700' : '500'}">${window.App.escapeHtml(a.nickname)}</span>
+            <span style="margin-left:auto;color:var(--text-light);font-size:11px;white-space:nowrap;background:var(--btn-bg);padding:2px 8px;border-radius:10px;">${postCount}条动态</span>
             ${isActive ? '<span class="check-mark">✓</span>' : ''}
             <span class="account-dropdown-edit" data-action="edit" data-account-id="${a.id}">✎</span>
         </div>`;
@@ -232,7 +242,7 @@
             <span class="toggle-label"><span class="dice-icon">🎲</span> 随机AI模式</span>
             <div class="toggle-switch${window.App.randomAIMode ? ' active' : ''}" id="randomAIToggleSwitch"></div>
         </div>`;
-        html += `<div style="padding:6px 14px 4px;font-size:11px;color:var(--text-light);font-weight:600;letter-spacing:.5px;">🤖 AI 虚拟评论员</div>`;
+        html += `<div style="padding:8px 14px 5px;font-size:11px;color:var(--text-light);font-weight:700;letter-spacing:.8px;text-transform:uppercase;">🤖 AI 虚拟评论员</div>`;
         html += aiAccounts.map(a => {
             const count = aiCommentCounts[a.id] || 0;
             const isActive = a.id === window.App.activeAIId;
@@ -240,15 +250,15 @@
             const actBadge = `<span class="ai-activity-badge${act === 0 ? ' zero' : ''}">${act === 0 ? '已禁用' : '活跃' + act}</span>`;
             const aiAvText = a.avatarText || '🤖';
             const aiAvIsEmoji = window.App.isEmoji(aiAvText);
-            return `<div class="account-dropdown-item${isActive ? ' active' : ''}" data-ai-id="${a.id}" style="${isActive ? 'background:#f0eeff;' : 'background:var(--btn-bg);'}">
-            <div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:${aiAvIsEmoji ? '18px' : '13px'};flex-shrink:0;">${window.App.escapeHtml(aiAvText)}</div>
-            <span>${window.App.escapeHtml(a.nickname)}${window.App.randomAIMode ? actBadge : ''}</span>
-            <span style="margin-left:auto;color:var(--text-light);font-size:11px;white-space:nowrap;">${count}条评论</span>
+            return `<div class="account-dropdown-item${isActive ? ' active' : ''}" data-ai-id="${a.id}" style="${isActive ? 'background:var(--ai-purple-light,rgba(124,92,252,0.1));' : ''}">
+            <div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:${aiAvIsEmoji ? '24px' : '17px'};flex-shrink:0;">${window.App.escapeHtml(aiAvText)}</div>
+            <span style="font-weight:${isActive ? '700' : '500'}">${window.App.escapeHtml(a.nickname)}${window.App.randomAIMode ? actBadge : ''}</span>
+            <span style="margin-left:auto;color:var(--text-light);font-size:11px;white-space:nowrap;background:var(--btn-bg);padding:2px 8px;border-radius:10px;">${count}条评论</span>
             ${isActive ? '<span class="check-mark" style="color:var(--ai-purple);">✓</span>' : ''}
             <span class="account-dropdown-edit" data-action="edit-ai" data-account-id="${a.id}">✎</span>
         </div>`;
         }).join('');
-        html += `<div class="account-dropdown-add" id="btnAddAIAccount" style="color:var(--ai-purple);">+ 添加 AI 人设</div>`;
+        html += `<div class="account-dropdown-add" id="btnAddAIAccount" style="color:var(--ai-purple);font-weight:700;">+ 添加 AI 人设</div>`;
         $aiDropdown.innerHTML = html;
 
         const $toggleRow = $aiDropdown.querySelector('#randomAIToggle');
@@ -313,7 +323,7 @@
         if (toRender.length === 0) {
             if ($loader) $loader.style.display = 'none';
             if (renderedCount === 0 && $timeline.innerHTML === '') {
-                $timeline.innerHTML = '<div class="timeline-empty"><span class="empty-icon">🌱</span><p>还没有动态</p></div>';
+                $timeline.innerHTML = '<div class="timeline-empty"><span class="empty-icon">🌱</span><p>还没有动态，来发第一条吧</p></div>';
             }
             window.App.renderedCount = renderedCount;
             return;
@@ -332,17 +342,29 @@
     }
 
     function renderCommentItem(c, postId) {
-        const cu = window.App.getAcc(c.userId) || { nickname: '未知' };
+        const cu = window.App.getAcc(c.userId) || { nickname: '未知', avatarBg: '#aaa' };
         const isAI = cu?.isAI;
-        return `<div class="comment-item">
-                <div class="comment-content">
-                    <span class="comment-user">${window.App.escapeHtml(cu.nickname)}${window.App.getBadgeHtml(cu)}：</span>
-                    <div class="${isAI ? 'ai-comment-text' : ''}">${window.App.parseMarkdown(c.text)}</div>
+
+        // Build small avatar
+        const avText = cu.avatarText || cu.nickname?.charAt(0)?.toUpperCase() || '?';
+        const isEmoji = cu.avatarText && window.App.isEmoji(cu.avatarText);
+        const avFontSize = isEmoji ? '14px' : '11px';
+        const avHtml = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:${avFontSize}">${window.App.escapeHtml(avText)}</div>`;
+
+        return `<div class="comment-item${isAI ? ' ai-comment' : ''}">
+            ${avHtml}
+            <div class="comment-content">
+                <div class="comment-header">
+                    <span class="comment-user">${window.App.escapeHtml(cu.nickname)}${window.App.getBadgeHtml(cu)}</span>
                     <span class="comment-time">${window.App.formatTime(c.timestamp)}</span>
                 </div>
+                <div class="comment-body ${isAI ? 'ai-comment-text' : ''}">${window.App.parseMarkdown(c.text)}</div>
+            </div>
+            <div class="comment-actions">
                 <button class="reply-btn" data-action="copy-comment" data-post-id="${postId}" data-comment-id="${c.id}">复制</button>
-                <button class="delete-comment-btn" data-action="delete-comment" data-post-id="${postId}" data-comment-id="${c.id}" title="删除评论">✕</button>
-            </div>`;
+                <button class="delete-comment-btn" data-action="delete-comment" data-post-id="${postId}" data-comment-id="${c.id}" title="删除">✕</button>
+            </div>
+        </div>`;
     }
 
     // 只生成评论区的 HTML（.post-comments 容器 + 列表 + 折叠按钮）
@@ -399,7 +421,10 @@
         // 更新 💬 计数按钮
         const cmtBtn = card.querySelector('[data-action="focus-comment"]');
         const cmtCnt = post.comments.length;
-        if (cmtBtn) cmtBtn.innerHTML = '💬 ' + (cmtCnt || '评论');
+        if (cmtBtn) {
+            const chatSvg = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+            cmtBtn.innerHTML = chatSvg + (cmtCnt ? ' ' + cmtCnt : ' 评论');
+        }
 
         // 局部重绑评论事件（复制/删除/折叠）
         if (newComments) {
@@ -424,7 +449,7 @@
         const cmtCnt = post.comments.length;
         let avatarHtml;
         if (author.avatarText) {
-            avatarHtml = `<div class="post-avatar-placeholder" style="background:${author.avatarBg};font-size:${window.App.isEmoji(author.avatarText) ? '24px' : '16px'}">${window.App.escapeHtml(author.avatarText)}</div>`;
+            avatarHtml = `<div class="post-avatar-placeholder" style="background:${author.avatarBg};font-size:${window.App.isEmoji(author.avatarText) ? '30px' : '22px'}">${window.App.escapeHtml(author.avatarText)}</div>`;
         } else if (author.avatar?.startsWith('data:')) {
             avatarHtml = `<img class="post-avatar" src="${author.avatar}">`;
         } else {
@@ -452,28 +477,37 @@
         const curUser = window.App.getCurAcc();
         let curAvHtml;
         if (curUser?.avatarText) {
-            curAvHtml = `<div class="comment-input-avatar-placeholder" data-post-id="${post.id}" title="双击发送AI评论" style="background:${curUser?.avatarBg || '#ccc'};font-size:${window.App.isEmoji(curUser.avatarText) ? '18px' : '12px'}">${window.App.escapeHtml(curUser.avatarText)}</div>`;
+            curAvHtml = `<div class="comment-input-avatar-placeholder" data-post-id="${post.id}" title="双击发送AI评论" style="background:${curUser?.avatarBg || '#ccc'};font-size:${window.App.isEmoji(curUser.avatarText) ? '24px' : '16px'}">${window.App.escapeHtml(curUser.avatarText)}</div>`;
         } else if (curUser?.avatar?.startsWith('data:')) {
             curAvHtml = `<img class="comment-input-avatar" data-post-id="${post.id}" title="双击发送AI评论" src="${curUser.avatar}">`;
         } else {
             curAvHtml = `<div class="comment-input-avatar-placeholder" data-post-id="${post.id}" title="双击发送AI评论" style="background:${curUser?.avatarBg || '#ccc'}">${curUser?.nickname.charAt(0).toUpperCase() || '?'}</div>`;
         }
 
+        // Ghost writer tag
         let ghostTagHtml = '';
         if (post.ghostWriter) {
             const ghostAcc = window.App.getAcc(post.ghostWriter);
-            ghostTagHtml = `<span style="font-size:11px;color:var(--text-light);margin-left:6px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:1px 7px;cursor:pointer;" onclick="window.App.showGhostInfo('${post.id}')">✍️ ${window.App.escapeHtml(ghostAcc?.nickname || 'AI')}代笔</span>`;
+            ghostTagHtml = `<span style="font-size:11px;color:var(--ai-purple);margin-left:6px;background:var(--ai-purple-light,rgba(124,92,252,0.08));border:1px solid rgba(124,92,252,0.2);border-radius:10px;padding:2px 8px;cursor:pointer;font-weight:600;" onclick="window.App.showGhostInfo('${post.id}')">✍️ ${window.App.escapeHtml(ghostAcc?.nickname || 'AI')}代笔</span>`;
         }
 
-        return `<div class="post-card${post.pinned ? ' pinned-card' : ''}" id="post-${post.id}">${post.pinned ? '<div class="pin-badge">📌</div>' : ''}
-        <div class="post-header">${avatarHtml}<div class="post-user-info"><div class="post-nickname">${window.App.escapeHtml(author.nickname)}</div><div class="post-time">${window.App.formatTime(post.timestamp)}</div>${ghostTagHtml}</div><button class="post-menu-btn" data-action="toggle-menu" data-post-id="${post.id}">⋯</button><div class="post-menu-dropdown" id="postMenu-${post.id}" style="display:none;"><button data-action="edit-post" data-post-id="${post.id}">✏️ 编辑</button><button data-action="toggle-pin" data-post-id="${post.id}">${post.pinned ? '取消置顶' : '📌 置顶'}</button><button data-action="share-post" data-post-id="${post.id}">📤 分享这条</button><button data-action="copy-post" data-post-id="${post.id}">📋 复制</button><button data-action="delete-post" data-post-id="${post.id}" class="danger">🗑️ 删除</button></div></div>
+        // SVG icons
+        const heartFilled = `<svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+        const heartOutline = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+        const chatIcon = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+        const menuDotsIcon = `<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><circle cx="12" cy="5" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="12" cy="19" r="2.2"/></svg>`;
+
+        const likesBadge = likeCnt ? `<div class="post-likes-bar"><span class="likes-heart">♥</span><span class="likes-names">${post.likes.map(uid => window.App.getAcc(uid)?.nickname || '未知').slice(0, 8).join('、')}${likeCnt > 8 ? ' 等 ' + likeCnt + ' 人' : ''}</span></div>` : '';
+
+        return `<div class="post-card${post.pinned ? ' pinned-card' : ''}" id="post-${post.id}">${post.pinned ? '<div class="pin-badge">📌 置顶</div>' : ''}
+        <div class="post-header">${avatarHtml}<div class="post-user-info"><div class="post-nickname">${window.App.escapeHtml(author.nickname)}${window.App.getBadgeHtml(author)}</div><div class="post-time">${window.App.formatTime(post.timestamp)}</div>${ghostTagHtml}</div><button class="post-menu-btn" data-action="toggle-menu" data-post-id="${post.id}" title="更多操作">${menuDotsIcon}</button><div class="post-menu-dropdown" id="postMenu-${post.id}" style="display:none;"><button data-action="edit-post" data-post-id="${post.id}">✏️ 编辑</button><button data-action="toggle-pin" data-post-id="${post.id}">${post.pinned ? '📌 取消置顶' : '📌 置顶'}</button><button data-action="share-post" data-post-id="${post.id}">📤 导出这条</button><button data-action="share-link" data-post-id="${post.id}">🔗 链接分享</button><button data-action="copy-post" data-post-id="${post.id}">📋 复制文字</button><button data-action="delete-post" data-post-id="${post.id}" class="danger">🗑️ 删除</button></div></div>
         ${post.text ? `<div class="post-text">${window.App.parseMarkdown(post.text)}</div>` : ''}
         ${mediaHtml}
-        <div class="post-actions"><button class="action-btn${isLiked ? ' liked' : ''}" data-action="like" data-post-id="${post.id}">${isLiked ? '❤️' : '🤍'} ${likeCnt || '点赞'}</button><button class="action-btn" data-action="focus-comment" data-post-id="${post.id}">💬 ${cmtCnt || '评论'}</button></div>
-        ${likeCnt ? `<div class="post-likes-bar">❤️ ${post.likes.map(uid => window.App.getAcc(uid)?.nickname || '未知').slice(0, 8).join('、')}${likeCnt > 8 ? ' 等' + likeCnt + '人' : ''}</div>` : ''}${cmtsHtml}
-        <div class="comment-input-row">${curAvHtml}<textarea placeholder="写评论..." maxlength="500" id="commentInput-${post.id}" rows="1"></textarea>
-<button class="ai-generate-btn" data-action="ai-comment" data-post-id="${post.id}">🤖生成</button>
-<button class="comment-submit-btn" data-action="submit-comment" data-post-id="${post.id}">发送</button>`;
+        <div class="post-actions"><button class="action-btn${isLiked ? ' liked' : ''}" data-action="like" data-post-id="${post.id}">${isLiked ? heartFilled : heartOutline}${likeCnt ? ' ' + likeCnt : ' 点赞'}</button><button class="action-btn btn-comment" data-action="focus-comment" data-post-id="${post.id}">${chatIcon}${cmtCnt ? ' ' + cmtCnt : ' 评论'}</button></div>
+        ${likesBadge}${cmtsHtml}
+        <div class="comment-input-row">${curAvHtml}<textarea placeholder="写评论…" maxlength="500" id="commentInput-${post.id}" rows="1"></textarea>
+<button class="ai-generate-btn" data-action="ai-comment" data-post-id="${post.id}">🤖 生成</button>
+<button class="comment-submit-btn" data-action="submit-comment" data-post-id="${post.id}"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/></svg></button>`;
     }
 
     function observeMediaInContainer(container) {
@@ -506,6 +540,7 @@
         $timeline.querySelectorAll('[data-action="toggle-pin"]').forEach(b => b.onclick = () => window.App.togglePin(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="delete-post"]').forEach(b => b.onclick = () => window.App.confirmDelete(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="share-post"]').forEach(b => b.onclick = () => window.App.sharePost(b.dataset.postId));
+        $timeline.querySelectorAll('[data-action="share-link"]').forEach(b => b.onclick = () => window.App.shareLink(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="copy-post"]').forEach(b => b.onclick = () => window.App.copyPost(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="like"]').forEach(b => b.onclick = () => window.App.toggleLike(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="focus-comment"]').forEach(b => b.onclick = () => {
@@ -629,22 +664,29 @@
         const isLiked = post.likes.includes(window.App.currentId);
         const likeCnt = post.likes.length;
 
+        const heartFilled = `<svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+        const heartOutline = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+
         if (likeBtn) {
             likeBtn.className = 'action-btn' + (isLiked ? ' liked' : '');
-            likeBtn.innerHTML = (isLiked ? '❤️' : '🤍') + ' ' + (likeCnt || '点赞');
+            likeBtn.innerHTML = (isLiked ? heartFilled : heartOutline) + (likeCnt ? ' ' + likeCnt : ' 点赞');
+            if (isLiked) {
+                likeBtn.style.transform = 'scale(1.2)';
+                setTimeout(() => { likeBtn.style.transform = ''; }, 200);
+            }
         }
 
         if (likeCnt) {
             const names = post.likes.map(uid => window.App.getAcc(uid)?.nickname || '未知').slice(0, 8).join('、');
-            const extra = likeCnt > 8 ? ' 等' + likeCnt + '人' : '';
-            const newHtml = '❤️ ' + names + extra;
+            const extra = likeCnt > 8 ? ' 等 ' + likeCnt + ' 人' : '';
+            const newHtml = `<span class="likes-heart">♥</span><span class="likes-names">${names}${extra}</span>`;
             if (likesBar) {
                 likesBar.innerHTML = newHtml;
                 likesBar.style.display = '';
             } else {
                 const bar = document.createElement('div');
                 bar.className = 'post-likes-bar';
-                bar.textContent = newHtml;
+                bar.innerHTML = newHtml;
                 const actions = card.querySelector('.post-actions');
                 if (actions) {
                     actions.after(bar);
@@ -733,7 +775,7 @@
         lockBodyScroll();
 
         const mask = document.createElement('div');
-        mask.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.25);';
+        mask.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,12,0.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);';
         document.body.appendChild(mask);
 
         const editor = document.createElement('div');
@@ -745,27 +787,40 @@
             'bottom:0',
             'z-index:9999',
             'background:var(--card-bg,#fff)',
-            'padding:10px 14px',
+            'padding:12px 14px 16px',
             'display:flex',
             'flex-direction:column',
-            'gap:8px',
+            'gap:10px',
+            'border-radius:20px 20px 0 0',
+            'border-top:1px solid var(--border,#e6e9ef)',
+            'box-shadow:0 -6px 32px rgba(0,0,0,0.12)',
         ].join(';');
 
         editor.innerHTML =
             '<div style="display:flex;align-items:center;gap:8px;">' +
-            '<button id="mobileCommentCancel" style="font-size:14px;color:var(--text-light,#888);background:none;border:none;padding:4px 0;cursor:pointer;">取消</button>' +
-            '<button id="mobileCommentEmoji" style="font-size:18px;background:none;border:none;padding:4px;cursor:pointer;">😀</button>' +
-            '<button id="mobileCommentSend" style="margin-left:auto;background:var(--ai-purple,#7c5cfc);color:#fff;border:none;border-radius:18px;padding:6px 18px;font-size:14px;cursor:pointer;">发送</button>' +
+            '<button id="mobileCommentCancel" style="font-size:14px;font-weight:600;color:var(--text-secondary,#666);background:none;border:none;padding:5px 4px;cursor:pointer;font-family:inherit;">取消</button>' +
+            '<button id="mobileCommentEmoji" style="font-size:19px;background:none;border:none;padding:4px 6px;cursor:pointer;border-radius:8px;line-height:1;">😀</button>' +
+            '<button id="mobileCommentSend" style="margin-left:auto;background:linear-gradient(135deg,#7c5cfc,#c77dff);color:#fff;border:none;border-radius:20px;padding:7px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:0.3px;box-shadow:0 3px 12px rgba(124,92,252,0.35);">发送</button>' +
             '</div>' +
-            '<textarea id="mobileCommentInput" placeholder="写评论..." maxlength="500" ' +
-            'style="width:100%;min-height:72px;max-height:140px;resize:none;border:none;outline:none;' +
-            'background:transparent;font-size:16px;line-height:1.5;box-sizing:border-box;padding:0;">' +
+            '<textarea id="mobileCommentInput" placeholder="写评论…" maxlength="500" ' +
+            'style="width:100%;min-height:76px;max-height:140px;resize:none;border:1.5px solid var(--border,#e6e9ef);border-radius:14px;outline:none;' +
+            'background:var(--input-bg,#f7f8fa);color:var(--text,#1a1a2e);font-size:16px;line-height:1.5;box-sizing:border-box;padding:10px 13px;font-family:inherit;transition:border-color 0.18s;">' +
             window.App.escapeHtml(existingText) +
             '</textarea>';
 
         document.body.appendChild(editor);
 
         const textarea = editor.querySelector('#mobileCommentInput');
+
+        // Focus border effect
+        textarea.addEventListener('focus', () => {
+            textarea.style.borderColor = 'var(--accent,#09c068)';
+            textarea.style.boxShadow = '0 0 0 3px rgba(9,192,104,0.15)';
+        });
+        textarea.addEventListener('blur', () => {
+            textarea.style.borderColor = 'var(--border,#e6e9ef)';
+            textarea.style.boxShadow = 'none';
+        });
 
         function close() {
             mask.remove();
@@ -859,7 +914,48 @@
         renderHeader();
         renderNormalDropdown();
         renderAIDropdown();
-        renderTimeline(true);
+
+        // 手术式更新所有可见卡片：点赞按钮 + 评论头像
+        var curUser = window.App.getCurAcc();
+        document.querySelectorAll('.post-card').forEach(function (card) {
+            // 更新点赞按钮
+            var likeBtn = card.querySelector('[data-action="like"]');
+            if (likeBtn) {
+                var postId = likeBtn.dataset.postId;
+                var post = window.App.posts.find(function (p) { return p.id === postId; });
+                if (post) {
+                    var isLiked = post.likes.indexOf(window.App.currentId) !== -1;
+                    var likeCnt = post.likes.length;
+                    var hFill = '<svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+                    var hOut = '<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+                    likeBtn.className = 'action-btn' + (isLiked ? ' liked' : '');
+                    likeBtn.innerHTML = (isLiked ? hFill : hOut) + (likeCnt ? ' ' + likeCnt : ' 点赞');
+                }
+            }
+            // 更新评论输入头像
+            var avContainer = card.querySelector('.comment-input-avatar-placeholder, .comment-input-avatar');
+            if (avContainer) {
+                var pid = avContainer.dataset.postId;
+                var newAvHtml;
+                if (curUser?.avatarText) {
+                    newAvHtml = '<div class="comment-input-avatar-placeholder" data-post-id="' + pid +
+                        '" title="双击发送AI评论" style="background:' + (curUser.avatarBg || '#ccc') +
+                        ';font-size:' + (window.App.isEmoji(curUser.avatarText) ? '24px' : '16px') + '">' +
+                        window.App.escapeHtml(curUser.avatarText) + '</div>';
+                } else if (curUser?.avatar && curUser.avatar.indexOf('data:') === 0) {
+                    newAvHtml = '<img class="comment-input-avatar" data-post-id="' + pid +
+                        '" title="双击发送AI评论" src="' + curUser.avatar + '">';
+                } else {
+                    newAvHtml = '<div class="comment-input-avatar-placeholder" data-post-id="' + pid +
+                        '" title="双击发送AI评论" style="background:' + (curUser?.avatarBg || '#ccc') + '">' +
+                        (curUser ? curUser.nickname.charAt(0).toUpperCase() : '?') + '</div>';
+                }
+                var temp = document.createElement('div');
+                temp.innerHTML = newAvHtml;
+                avContainer.replaceWith(temp.firstElementChild);
+            }
+        });
+
         window.App.updatePublishBtn();
 
         if ($publishText) $publishText.value = savedText;
@@ -941,7 +1037,7 @@
         var overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
         overlay.style.display = 'flex';
-        overlay.innerHTML = '<div class="modal-dialog" style="max-width:420px;padding:18px 20px;">' +
+        overlay.innerHTML = '<div class="modal-dialog" style="max-width:420px;padding:20px 22px;">' +
             '<h3>🔖 收藏语录</h3>' +
             '<div class="saved-quotes-list" style="max-height:60vh;overflow-y:auto;margin-top:12px;">' +
             (savedQuotes.length === 0
@@ -954,12 +1050,12 @@
                         '<span class="saved-quote-date">' + savedDate + '</span>' +
                         '<span class="saved-quote-author">—— ' + window.App.escapeHtml(q.aiName) + '</span>' +
                         '</div>' +
-                        '<button class="saved-quote-delete" data-idx="' + i + '">✕</button>' +
+                        '<button class="saved-quote-delete" data-idx="' + i + '" title="删除">✕</button>' +
                         '</div>';
                 }).join('')
             ) +
             '</div>' +
-            '<div class="btn-row" style="margin-top:14px;justify-content:flex-end;">' +
+            '<div class="btn-row" style="margin-top:16px;justify-content:flex-end;">' +
             '<button class="btn btn-cancel" id="savedQuotesClose">关闭</button>' +
             '</div></div>';
         document.body.appendChild(overlay);

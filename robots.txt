@@ -1,0 +1,10 @@
+# 禁止所有爬虫访问任何内容
+User-agent: *
+Disallow: /
+
+# 明确禁止互联网档案馆的爬虫
+User-agent: archive.org_bot
+Disallow: /
+
+User-agent: ia_archiver
+Disallow: /

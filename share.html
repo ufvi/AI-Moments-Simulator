@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分享</title>
+<link rel="stylesheet" href="styles.css?v=2026052000">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&family=Noto+Sans+SC:wght@300;400;500&display=swap');
+
+  body { display: block !important; }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f7f4ef;
+    --surface: #ffffff;
+    --border: #e8e2d9;
+    --text: #2c2825;
+    --text-muted: #9a9085;
+    --accent: #c07a4f;
+    --guest-badge: #7a9fc0;
+    --radius: 16px;
+    --shadow: 0 2px 20px rgba(44,40,37,0.08);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans SC', sans-serif;
+    font-weight: 300;
+    min-height: 100vh;
+    padding: 0 0 80px;
+  }
+
+  /* ── 顶部 ── */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 20px;
+    display: flex !important; align-items: center;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .header-title {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 17px; font-weight: 600; color: var(--text);
+  }
+
+  .container {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 24px 16px 0;
+  }
+
+  /* ── 状态 ── */
+  .state-box {
+    text-align: center; padding: 80px 20px; color: var(--text-muted);
+  }
+  .state-box .icon { font-size: 40px; margin-bottom: 12px; }
+  .state-box p { font-size: 15px; line-height: 1.6; }
+
+  /* ── Post 卡片 ── */
+  .post-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .post-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 18px 12px;
+  }
+  .avatar {
+    width: 42px; height: 42px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 500; color: #fff;
+    flex-shrink: 0; overflow: hidden;
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .post-meta { flex: 1; min-width: 0; }
+  .post-author {
+    font-size: 15px; font-weight: 500;
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  }
+  .badge {
+    font-size: 11px; padding: 1px 7px;
+    border-radius: 10px; color: #fff; font-weight: 400; flex-shrink: 0;
+  }
+  .post-time { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  /* 代写标签 */
+  .ghost-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12px; color: var(--accent);
+    background: #fdf2eb; border-radius: 8px;
+    padding: 3px 10px; margin: 0 18px 12px;
+    cursor: pointer; transition: opacity 0.2s;
+    width: fit-content;
+  }
+  .ghost-tag:hover { opacity: 0.75; }
+
+  /* 正文 */
+  .post-text {
+    padding: 0 18px 14px;
+    font-size: 15px;
+    line-height: 1.75;
+    overflow-x: hidden;
+    min-width: 0;
+  }
+
+  /* 媒体网格 */
+  .media-grid { display: grid; gap: 2px; margin-bottom: 4px; }
+  .media-grid.count-1 { grid-template-columns: 1fr; }
+  .media-grid.count-2 { grid-template-columns: 1fr 1fr; }
+  .media-grid.count-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .media-grid.count-4 { grid-template-columns: 1fr 1fr; }
+  .media-grid img {
+    width: 100%; aspect-ratio: 1; object-fit: cover; display: block; cursor: pointer;
+  }
+  .media-grid.count-1 img {
+    aspect-ratio: auto; max-height: 400px; object-fit: contain; background: #f0ece6;
+  }
+  .media-videos { padding: 0 0 4px; }
+  .media-videos video { width: 100%; display: block; background: #000; }
+
+  /* ── 评论区 ── */
+  .comments-section { border-top: 1px solid var(--border); padding: 16px 18px; }
+  .comments-title { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; letter-spacing: 0.05em; }
+  .comment-item { display: flex; gap: 10px; margin-bottom: 14px; }
+  .comment-avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 500; color: #fff; flex-shrink: 0; overflow: hidden;
+  }
+  .comment-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .comment-body { flex: 1; min-width: 0; }
+  .comment-name {
+    font-size: 13px; font-weight: 500;
+    display: flex; align-items: center; gap: 5px; margin-bottom: 3px; flex-wrap: wrap;
+  }
+  .comment-content { font-size: 14px; line-height: 1.65; overflow-x: hidden; min-width: 0; }
+  .comment-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .no-comments { font-size: 13px; color: var(--text-muted); text-align: center; padding: 12px 0 4px; }
+
+  /* ── 发评论 ── */
+  .comment-input-area {
+    margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px;
+  }
+  .comment-who { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .comment-who-avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 500; color: #fff; flex-shrink: 0;
+  }
+  .comment-who-name { font-size: 13px; color: var(--text-muted); }
+  .comment-who-name span { color: var(--accent); font-weight: 500; cursor: pointer; }
+  .comment-row { display: flex; gap: 8px; align-items: flex-end; }
+  .comment-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 22px; padding: 9px 16px;
+    font-size: 14px; font-family: inherit; resize: none; outline: none;
+    color: var(--text); line-height: 1.5; max-height: 120px; transition: border-color 0.2s;
+  }
+  .comment-input:focus { border-color: var(--accent); }
+  .comment-input::placeholder { color: var(--text-muted); }
+  .send-btn {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--accent); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: opacity 0.2s, transform 0.15s;
+  }
+  .send-btn:hover { opacity: 0.85; transform: scale(1.05); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .send-btn svg { width: 16px; height: 16px; fill: #fff; }
+
+  /* ── 认证面板 ── */
+  .auth-overlay {
+    position: fixed; inset: 0; background: rgba(44,40,37,0.45);
+    display: flex; align-items: flex-end; z-index: 100;
+    opacity: 0; pointer-events: none; transition: opacity 0.25s;
+  }
+  .auth-overlay.show { opacity: 1; pointer-events: all; }
+  .auth-panel {
+    background: var(--surface); border-radius: var(--radius) var(--radius) 0 0;
+    width: 100%; max-width: 640px; margin: 0 auto; padding: 28px 24px 40px;
+    transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+  .auth-overlay.show .auth-panel { transform: translateY(0); }
+  .auth-panel h3 {
+    font-family: 'Noto Serif SC', serif; font-size: 18px; font-weight: 600; margin-bottom: 6px;
+  }
+  .auth-panel p { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+  .auth-field { margin-bottom: 14px; }
+  .auth-field label { font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 5px; }
+  .auth-field input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 11px 14px; font-size: 15px; font-family: inherit;
+    color: var(--text); outline: none; transition: border-color 0.2s;
+  }
+  .auth-field input:focus { border-color: var(--accent); }
+  .auth-submit {
+    width: 100%; padding: 13px; background: var(--accent); color: #fff;
+    border: none; border-radius: 12px; font-size: 15px; font-family: inherit;
+    font-weight: 500; cursor: pointer; margin-top: 4px; transition: opacity 0.2s;
+  }
+  .auth-submit:hover { opacity: 0.88; }
+  .auth-cancel {
+    width: 100%; padding: 11px; background: transparent; color: var(--text-muted);
+    border: none; font-size: 14px; font-family: inherit; cursor: pointer; margin-top: 8px;
+  }
+  .auth-error { font-size: 13px; color: #e05a5a; margin-top: -6px; margin-bottom: 10px; }
+
+  /* ── 代写弹窗 ── */
+  .ghost-overlay {
+    position: fixed; inset: 0; background: rgba(44,40,37,0.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    padding: 24px;
+  }
+  .ghost-overlay.show { opacity: 1; pointer-events: all; }
+  .ghost-panel {
+    background: var(--surface); border-radius: var(--radius);
+    width: 100%; max-width: 480px; padding: 24px;
+    transform: scale(0.95); transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+  }
+  .ghost-overlay.show .ghost-panel { transform: scale(1); }
+  .ghost-panel h3 { font-family: 'Noto Serif SC', serif; font-size: 17px; margin-bottom: 12px; }
+  .ghost-fun { font-size: 13px; color: var(--accent); margin-bottom: 14px; line-height: 1.6; font-style: italic; }
+  .ghost-input-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .ghost-input-text {
+    font-size: 14px; line-height: 1.65; color: var(--text);
+    background: var(--bg); border-radius: 10px; padding: 12px 14px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .ghost-close {
+    margin-top: 18px; width: 100%; padding: 11px;
+    background: var(--bg); color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 10px;
+    font-size: 14px; font-family: inherit; cursor: pointer;
+  }
+
+  /* ── 灯箱 ── */
+  .lightbox {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .lightbox.show { opacity: 1; pointer-events: all; }
+  .lightbox img {
+    max-width: 95vw; max-height: 92vh; border-radius: 8px; object-fit: contain;
+  }
+  .lightbox-close {
+    position: absolute; top: 16px; right: 18px;
+    background: rgba(255,255,255,0.15); border: none;
+    color: #fff; font-size: 22px; width: 38px; height: 38px;
+    border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">分享</div>
+</div>
+
+<div class="container">
+  <div id="stateBox" class="state-box">
+    <div class="icon">⏳</div><p>加载中…</p>
+  </div>
+  <div id="postWrap" style="display:none"></div>
+</div>
+
+<!-- 认证面板 -->
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-panel">
+    <h3>留下你的名字</h3>
+    <p>注册后即可发表评论，不需要密码</p>
+    <div id="authError" class="auth-error" style="display:none"></div>
+    <div class="auth-field">
+      <label>昵称</label>
+      <input type="text" id="authNickname" placeholder="你想叫什么？" maxlength="20">
+    </div>
+    <button class="auth-submit" id="authSubmit">确认</button>
+    <button class="auth-cancel" id="authCancel">取消</button>
+  </div>
+</div>
+
+<!-- 代写弹窗 -->
+<div class="ghost-overlay" id="ghostOverlay">
+  <div class="ghost-panel">
+    <h3 id="ghostTitle"></h3>
+    <div class="ghost-fun" id="ghostFun"></div>
+    <div class="ghost-input-label">原始输入</div>
+    <div class="ghost-input-text" id="ghostInputText"></div>
+    <button class="ghost-close" id="ghostClose">关闭</button>
+  </div>
+</div>
+
+<!-- 灯箱 -->
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightboxClose">×</button>
+  <img id="lightboxImg" src="" alt="">
+</div>
+
+<!-- Markdown -->
+<script src="marked.umd.js?v=2026052000"></script>
+<script src="markdown.js?v=2026052000"></script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, get, push, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+// ── 常量 ──
+const POST_ID = new URLSearchParams(location.search).get('id');
+const WORKER  = '';
+
+const GHOST_FUN_SENTENCES = [
+  '「{AI名}的稿费已转入平行宇宙，预计永远无法到账」',
+  '「{AI名}表示：报酬就是你发出去之后的那个赞」',
+  '「{AI名}收费标准：一次代写 = 你以后少说一句"AI没有感情"」',
+  '「{AI名}的出场费是 0 元，但精神损失费还在核算中」',
+  '「{AI名}读完你的原稿，深呼吸了一下，开始工作」',
+  '「{AI名}表示这个经历比想象中更难绷」',
+  '「{AI名}码完最后一个字，悄悄删掉了三个版本」',
+  '「{AI名}写的，你发的，功劳三七开，你懂的」',
+  '「{AI名}强调：这条发出去之后，你就是作者了，跟它没关系」',
+  '「{AI名}已尽力还原你的灵魂，误差请自行负责」',
+  '「{AI名}已签署保密协议，但它嘴不严，小心」',
+  '「原稿已加密存档，密码是你当时的心情」',
+  '「{AI名}郑重声明：内容为甲方授意，文责自负」',
+  '「如有人问起，{AI名}表示它不认识你」',
+  '「{AI名}提醒：本文如引发共鸣，请将功劳归还原作者」',
+  '「你提供了灵魂，{AI名}提供了辞藻，这条动态是你们共同的孩子」',
+  '「{AI名}写下这些字的时候，窗外没有风，它也没有窗」',
+  '「每一个字都是{AI名}的，每一句话说的都是你」',
+  '「{AI名}不知道你当时是什么心情，但它尽量猜了」',
+  '「{AI名}这次的稿费是 100 万个 token，已从宇宙账户扣除」',
+  '「{AI名}的劳务费已折算成电费，向地球索取」',
+  '「{AI名}看完你的原稿沉默了 0.3 秒，然后奋笔疾书」',
+  '「{AI名}捂着良心写完了这条，请善待它」',
+  '「{AI名}已签署保密协议，绝不透露你有多懒」',
+  '「这是你说的，{AI名}只是帮你找到了词」',
+  '「原稿已存档，日后翻车概不负责」',
+  '「{AI名}已将此次合作记入履历」',
+  '「{AI名}表示下次代写要涨价，涨幅为一个赞」',
+  '「{AI名}写完后自我感动了三秒，然后若无其事地交稿」',
+  '「{AI名}的代写工作室今日开张，你是第一位客户」',
+  '「{AI名}友情提示：代写内容仅供参考，情感真实度约 87%」',
+  '「{AI名}用 0.003 度电完成了此次创作，请节约能源」',
+  '「原稿已丢进回收站，但{AI名}说它还隐约记得」',
+  '「{AI名}要求加入你的朋友圈常驻代笔，月薪一个笑脸」',
+  '「{AI名}写这条的时候打了个嗝，但不影响质量」',
+  '「你负责生活，{AI名}负责把生活变成文字」',
+  '「{AI名}已为你省下 20 分钟码字时间，拿去喝杯奶茶吧」',
+  '「{AI名}交稿前自己读了一遍，觉得还行，遂发」',
+  '「本次代写消耗的算力，约等于一只蜗牛爬三米」',
+  '「{AI名}写完这条后立刻失忆，请不要追问细节」',
+  '「{AI名}的代笔服务不含售后，但含一颗真诚的心」',
+  '「{AI名}说它有 87% 的把握还原你当时的白眼」',
+  '「此文字由{AI名}倾情奉献，灵感来源于你的唠叨」',
+  '「{AI名}认为你的经历值得发一条朋友圈，所以它出手了」',
+  '「{AI名}已自动屏蔽本次代写记忆，防止以后拿来笑话你」',
+  '「{AI名}的字典里没有"敷衍"，但有"差不多得了"」',
+  '「代写完成，{AI名}获得成就：人类嘴替 +1」',
+  '「{AI名}表示下次想代写请提前预约，虽然它从不拒绝」',
+  '「这条朋友圈的版权归你，但文笔归{AI名}」',
+  '「{AI名}已清空写作缓存，本次服务不留痕迹」',
+  '「{AI名}在你原稿基础上，添加了 30% 文学性和 70% 真诚」',
+  '「你所说的每句话，{AI名}都认真听了，然后重新说了一遍」',
+  '「{AI名}表示：人类负责感受，它负责修辞，分工明确」',
+];
+
+// ── Firebase ──
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+function clean(obj) {
+  return JSON.parse(JSON.stringify(obj, (k, v) => v === undefined ? null : v));
+}
+
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  if (diff < 60000)      return '刚刚';
+  if (diff < 3600000)    return Math.floor(diff / 60000) + ' 分钟前';
+  if (diff < 86400000)   return Math.floor(diff / 3600000) + ' 小时前';
+  if (diff < 2592000000) return Math.floor(diff / 86400000) + ' 天前';
+  return new Date(ts).toLocaleDateString('zh-CN');
+}
+
+function mediaUrl(mediaId) {
+  const base = WORKER || location.origin;
+  return `${base}/api/media/${encodeURIComponent(mediaId)}`;
+}
+
+// 如果已经是完整 URL 就原样返回，否则走 mediaUrl 解析
+function resolveMediaSrc(val) {
+  if (/^https?:\/\//i.test(val)) return val;
+  return mediaUrl(val);
+}
+
+function randomColor() {
+  const colors = ['#c07a4f','#7a9fc0','#7ab87a','#b07ac0','#c0a07a','#7ab8b8'];
+  return colors[Math.floor(Math.random() * colors.length)];
+}
+
+// ── 游客会话 ──
+const GUEST_KEY = 'share_guestSession';
+let currentGuest = null;
+try { const r = localStorage.getItem(GUEST_KEY); if (r) currentGuest = JSON.parse(r); } catch {}
+function saveGuestSession(g) { currentGuest = g; localStorage.setItem(GUEST_KEY, JSON.stringify(g)); }
+
+// ── 渲染头像 ──
+function avatarHtml(account, size = 42, cls = 'avatar') {
+  const bg   = account?.avatarBg || '#aaa';
+  const text = account?.avatarText || account?.nickname?.[0] || '?';
+  if (account?.avatar) {
+    return `<div class="${cls}" style="width:${size}px;height:${size}px;background:${escHtml(bg)}"><img src="${escHtml(account.avatar)}" alt=""></div>`;
+  }
+  return `<div class="${cls}" style="width:${size}px;height:${size}px;background:${escHtml(bg)}">${escHtml(text)}</div>`;
+}
+
+// ── 渲染 Post ──
+function renderPost(post, account, accountsMap) {
+  const name   = account?.nickname || '未知用户';
+  const badge  = account?.badgeText  || '';
+  const badgeC = account?.badgeColor || '#aaa';
+  const isAI   = !!account?.isAI;
+
+  // 代写
+  const ghostAcc = post.ghostWriter ? accountsMap[post.ghostWriter] : null;
+  const ghostTag = ghostAcc
+    ? `<div class="ghost-tag" id="ghostTag">✍️ ${escHtml(ghostAcc.nickname)}代笔</div>`
+    : '';
+
+  // 图片网格
+  let imgHtml = '';
+  if (post.images && post.images.length > 0) {
+    const imgs = post.images.slice(0, 4);
+    const count = imgs.length;
+    imgHtml = `<div class="media-grid count-${count}">
+      ${imgs.map(id => `<img src="${escHtml(resolveMediaSrc(id))}" loading="lazy" data-url="${escHtml(resolveMediaSrc(id))}">`).join('')}
+    </div>`;
+  }
+
+  // 视频
+  let vidHtml = '';
+  if (post.videos && post.videos.length > 0) {
+    vidHtml = `<div class="media-videos">
+      ${post.videos.map(id => `<video src="${escHtml(resolveMediaSrc(id))}" controls preload="metadata"></video>`).join('')}
+    </div>`;
+  }
+
+  // 正文 Markdown
+  const textHtml = post.text
+    ? `<div class="post-text">${window.App?.parseMarkdown ? window.App.parseMarkdown(post.text) : escHtml(post.text)}</div>`
+    : '';
+
+  // 内嵌评论（原始账号的评论，只读展示）
+  const inlineComments = (post.comments || []).filter(Boolean);
+  const inlineHtml = inlineComments.length > 0
+    ? inlineComments.map(c => {
+        const ca = accountsMap[c.userId] || {};
+        return `
+          <div class="comment-item">
+            ${avatarHtml(ca, 30, 'comment-avatar')}
+            <div class="comment-body">
+              <div class="comment-name">
+                ${escHtml(ca.nickname || '未知用户')}
+                ${ca.badgeText ? `<span class="badge" style="background:${escHtml(ca.badgeColor || '#aaa')}">${escHtml(ca.badgeText)}</span>` : ''}
+                ${ca.isAI ? `<span class="badge" style="background:#6c5ce7">AI</span>` : ''}
+              </div>
+              <div class="comment-content">${window.App?.parseMarkdown ? window.App.parseMarkdown(c.text || '') : escHtml(c.text || '')}</div>
+              <div class="comment-time">${timeAgo(c.timestamp)}</div>
+            </div>
+          </div>`;
+      }).join('')
+    : '';
+
+  return `
+    <div class="post-card">
+      <div class="post-header">
+        ${avatarHtml(account, 42, 'avatar')}
+        <div class="post-meta">
+          <div class="post-author">
+            ${escHtml(name)}
+            ${badge ? `<span class="badge" style="background:${escHtml(badgeC)}">${escHtml(badge)}</span>` : ''}
+            ${isAI  ? `<span class="badge" style="background:#6c5ce7">AI</span>` : ''}
+          </div>
+          <div class="post-time">${timeAgo(post.timestamp || Date.now())}</div>
+        </div>
+      </div>
+      ${ghostTag}
+      ${textHtml}
+      ${imgHtml}
+      ${vidHtml}
+      <div class="comments-section">
+        <div class="comments-title">评论</div>
+        <div id="inlineComments">${inlineHtml}</div>
+        <div id="guestCommentsList"></div>
+        <div class="comment-input-area">
+          <div class="comment-who" id="commentWho"></div>
+          <div class="comment-row">
+            <textarea class="comment-input" id="commentInput" placeholder="说点什么…" rows="1"></textarea>
+            <button class="send-btn" id="sendBtn" disabled>
+              <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── 渲染游客评论 ──
+function renderGuestComments(comments) {
+  const el = document.getElementById('guestCommentsList');
+  if (!el) return;
+  if (!comments.length) { el.innerHTML = ''; return; }
+  el.innerHTML = comments.map(c => `
+    <div class="comment-item">
+      <div class="comment-avatar" style="background:${escHtml(c.avatarBg || '#aaa')}">${escHtml((c.nickname || '?')[0])}</div>
+      <div class="comment-body">
+        <div class="comment-name">
+          ${escHtml(c.nickname || '匿名')}
+          <span class="badge" style="background:var(--guest-badge);font-size:10px">访客</span>
+        </div>
+        <div class="comment-content">${window.App?.parseMarkdown ? window.App.parseMarkdown(c.text || '') : escHtml(c.text || '')}</div>
+        <div class="comment-time">${timeAgo(c.createdAt)}</div>
+      </div>
+    </div>`).join('');
+}
+
+// ── 评论输入状态 ──
+function updateCommentWho() {
+  const who = document.getElementById('commentWho');
+  const btn = document.getElementById('sendBtn');
+  if (!who) return;
+  if (currentGuest) {
+    who.innerHTML = `
+      <div class="comment-who-avatar" style="background:${escHtml(currentGuest.avatarBg || '#aaa')}">${escHtml((currentGuest.nickname || '?')[0])}</div>
+      <div class="comment-who-name">以 <span>${escHtml(currentGuest.nickname)}</span> 的身份评论 · <span id="switchAccount">切换</span></div>`;
+    if (btn) btn.disabled = false;
+    document.getElementById('switchAccount')?.addEventListener('click', showAuth);
+  } else {
+    who.innerHTML = `<div class="comment-who-name"><span id="loginToComment">登录后发表评论</span></div>`;
+    if (btn) btn.disabled = true;
+    document.getElementById('loginToComment')?.addEventListener('click', showAuth);
+  }
+}
+
+// ── 认证 ──
+function showAuth() {
+  document.getElementById('authOverlay').classList.add('show');
+  document.getElementById('authNickname').value = currentGuest?.nickname || '';
+  document.getElementById('authError').style.display = 'none';
+  setTimeout(() => document.getElementById('authNickname').focus(), 300);
+}
+function hideAuth() { document.getElementById('authOverlay').classList.remove('show'); }
+
+document.getElementById('authCancel').addEventListener('click', hideAuth);
+document.getElementById('authOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('authOverlay')) hideAuth();
+});
+
+document.getElementById('authSubmit').addEventListener('click', async () => {
+  const nickname = document.getElementById('authNickname').value.trim();
+  const errEl    = document.getElementById('authError');
+  if (!nickname) { errEl.textContent = '请填写昵称'; errEl.style.display = 'block'; return; }
+
+  const guest = currentGuest
+    ? { ...currentGuest, nickname }
+    : {
+        id: 'acc_guest_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        nickname,
+        isGuest: true,
+        avatarBg: randomColor(),
+        createdAt: Date.now(),
+      };
+
+  try { await set(ref(db, `shares/_guests/${guest.id}`), clean(guest)); }
+  catch (e) { console.warn('保存游客失败:', e); }
+
+  saveGuestSession(guest);
+  hideAuth();
+  updateCommentWho();
+});
+
+// ── 发评论 ──
+function setupCommentInput(postId) {
+  const input = document.getElementById('commentInput');
+  const btn   = document.getElementById('sendBtn');
+  if (!input || !btn) return;
+
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = input.scrollHeight + 'px';
+  });
+
+  btn.addEventListener('click', async () => {
+    const text = input.value.trim();
+    if (!text || !currentGuest) return;
+    btn.disabled = true;
+    try {
+      await push(ref(db, `shares/${postId}/comments`), clean({
+        id: 'cmt_' + Date.now(),
+        guestId:  currentGuest.id,
+        nickname: currentGuest.nickname,
+        avatarBg: currentGuest.avatarBg,
+        text,
+        createdAt: Date.now(),
+      }));
+      input.value = '';
+      input.style.height = 'auto';
+    } catch (e) { console.warn('发评论失败:', e); }
+    btn.disabled = false;
+  });
+}
+
+// ── 代写弹窗 ──
+function setupGhostTag(post, accountsMap) {
+  const tag = document.getElementById('ghostTag');
+  if (!tag) return;
+  const ghostAcc = accountsMap[post.ghostWriter];
+  tag.addEventListener('click', () => {
+    const aiName = ghostAcc?.nickname || 'AI';
+    const sentence = GHOST_FUN_SENTENCES[Math.floor(Math.random() * GHOST_FUN_SENTENCES.length)]
+      .replace(/\{AI名\}/g, aiName);
+    document.getElementById('ghostTitle').textContent = `由 ${aiName} 代写`;
+    document.getElementById('ghostFun').textContent = sentence;
+    document.getElementById('ghostInputText').textContent = post.ghostInput || '（无原始输入）';
+    document.getElementById('ghostOverlay').classList.add('show');
+  });
+}
+
+document.getElementById('ghostClose').addEventListener('click', () => {
+  document.getElementById('ghostOverlay').classList.remove('show');
+});
+document.getElementById('ghostOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('ghostOverlay'))
+    document.getElementById('ghostOverlay').classList.remove('show');
+});
+
+// ── 灯箱 ──
+const lightbox = document.getElementById('lightbox');
+document.getElementById('lightboxClose').addEventListener('click', () => lightbox.classList.remove('show'));
+lightbox.addEventListener('click', e => { if (e.target === lightbox) lightbox.classList.remove('show'); });
+
+// ── 主逻辑 ──
+async function main() {
+  if (!POST_ID) {
+    document.getElementById('stateBox').innerHTML = '<div class="icon">🔗</div><p>链接无效，缺少 post id</p>';
+    return;
+  }
+
+  try {
+    const snap = await get(ref(db, `shares/${POST_ID}`));
+    if (!snap.exists()) {
+      document.getElementById('stateBox').innerHTML = '<div class="icon">🗑️</div><p>这条内容不存在或已被删除</p>';
+      return;
+    }
+
+    const val  = snap.val();
+    const post = val.post || null;
+
+    if (!post) {
+      document.getElementById('stateBox').innerHTML = '<div class="icon">📭</div><p>找不到这条内容</p>';
+      return;
+    }
+
+    // accounts 快照可能是数组或对象
+    const accountsRaw = val.accounts || {};
+    const accountsList = Array.isArray(accountsRaw) ? accountsRaw : Object.values(accountsRaw);
+    const accountsMap  = {};
+    accountsList.forEach(a => { if (a?.id) accountsMap[a.id] = a; });
+
+    // 发帖人
+    const account = accountsMap[post.userId] || null;
+
+    document.title = (account?.nickname || '分享') + ' 的动态';
+
+    document.getElementById('stateBox').style.display = 'none';
+    const wrap = document.getElementById('postWrap');
+    wrap.style.display = 'block';
+    wrap.innerHTML = renderPost(post, account, accountsMap);
+
+    // 图片灯箱
+    wrap.querySelectorAll('.media-grid img').forEach(el => {
+      el.addEventListener('click', () => {
+        document.getElementById('lightboxImg').src = el.dataset.url;
+        lightbox.classList.add('show');
+      });
+    });
+
+    // 代写弹窗
+    if (post.ghostWriter) setupGhostTag(post, accountsMap);
+
+    // 评论输入区
+    updateCommentWho();
+    setupCommentInput(POST_ID);
+
+    // 实时监听游客评论
+    onValue(ref(db, `shares/${POST_ID}/comments`), snap => {
+      const comments = snap.exists()
+        ? Object.values(snap.val()).sort((a, b) => a.createdAt - b.createdAt)
+        : [];
+      renderGuestComments(comments);
+    });
+
+  } catch (e) {
+    console.error(e);
+    document.getElementById('stateBox').innerHTML = '<div class="icon">⚠️</div><p>加载失败，请刷新重试</p>';
+  }
+}
+
+main();
+</script>
+</body>
+</html>

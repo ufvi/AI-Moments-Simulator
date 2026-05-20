@@ -488,6 +488,66 @@
         window.App.showToast('📤 帖子已导出');
     }
 
+    // === 链接分享 ===
+    async function shareLink(id) {
+        var post = (window.App.posts || []).find(function (p) { return p.id === id; });
+        if (!post) return;
+
+        // 收集所有涉及的账号
+        var accountsMap = {};
+        function addAcc(uid) {
+            if (!uid || accountsMap[uid]) return;
+            var acc = window.App.getAcc(uid);
+            if (acc) accountsMap[uid] = acc;
+        }
+        addAcc(post.userId);
+        if (post.ghostWriter) addAcc(post.ghostWriter);
+        (post.comments || []).forEach(function (c) { addAcc(c.userId); });
+
+        // 上传快照并获取链接
+        var relativeUrl = await window._fbSharePost(post, accountsMap);
+        if (!relativeUrl) {
+            window.App.showToast('❌ 生成链接失败');
+            return;
+        }
+
+        // 构建完整 URL
+        var fullUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + relativeUrl;
+
+        // 弹窗显示
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML =
+            '<div class="modal-dialog modal-dialog-sm" style="max-width:400px;">' +
+            '<h3 style="margin-bottom:8px;">🔗 分享链接</h3>' +
+            '<p style="font-size:12px;color:var(--text-light);margin-bottom:12px;">复制下方链接发给朋友，即可查看这条动态</p>' +
+            '<input type="text" readonly value="' + window.App.escapeHtml(fullUrl) + '" style="width:100%;padding:8px 10px;border:1.5px solid var(--input-border);border-radius:8px;font-size:13px;background:var(--input-bg);color:var(--text);margin-bottom:12px;" id="shareLinkInput" onclick="this.select()">' +
+            '<div class="btn-row" style="justify-content:center;gap:10px;">' +
+            '<button class="btn btn-cancel" id="closeShareLink">关闭</button>' +
+            '<button class="btn btn-save" id="copyShareLink">📋 复制链接</button>' +
+            '</div></div>';
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#closeShareLink').onclick = function () { overlay.remove(); };
+        overlay.querySelector('#copyShareLink').onclick = function () {
+            var inp = overlay.querySelector('#shareLinkInput');
+            inp.select();
+            navigator.clipboard && navigator.clipboard.writeText
+                ? navigator.clipboard.writeText(fullUrl).then(function () { window.App.showToast('📋 链接已复制'); }).catch(function () { fallbackCopy(fullUrl); })
+                : fallbackCopy(fullUrl);
+        };
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+        // 自动复制
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(fullUrl).then(function () {
+                window.App.showToast('📋 链接已复制到剪贴板');
+            }).catch(function () { fallbackCopy(fullUrl); });
+        } else {
+            fallbackCopy(fullUrl);
+        }
+    }
+
     function copyPost(id) {
         var post = (window.App.posts || []).find(function (p) { return p.id === id; });
         if (!post) return;
@@ -1456,6 +1516,7 @@
     window.App.exportData = exportData;
     window.App.importData = importData;
     window.App.sharePost = sharePost;
+    window.App.shareLink = shareLink;
     window.App.copyPost = copyPost;
     window.App.copyComment = copyComment;
     window.App.searchActive = searchActive;

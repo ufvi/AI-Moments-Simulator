@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分享管理</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&family=Noto+Sans+SC:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f7f4ef;
+    --surface: #ffffff;
+    --border: #e8e2d9;
+    --text: #2c2825;
+    --text-muted: #9a9085;
+    --accent: #c07a4f;
+    --accent-light: #fdf2eb;
+    --danger: #e05a5a;
+    --danger-light: #fdf0f0;
+    --green: #5a9e6f;
+    --green-light: #eef7f1;
+    --radius: 14px;
+    --shadow: 0 2px 16px rgba(44,40,37,0.07);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans SC', sans-serif;
+    font-weight: 300;
+    min-height: 100vh;
+    padding-bottom: 60px;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 20px;
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .header-title {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 17px; font-weight: 600; flex: 1;
+  }
+  .header-count {
+    font-size: 13px; color: var(--text-muted);
+    background: var(--bg); padding: 3px 10px; border-radius: 20px;
+  }
+
+  /* ── NS 输入栏 ── */
+  .ns-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .ns-label { font-size: 13px; color: var(--text-muted); flex-shrink: 0; }
+  .ns-input {
+    flex: 1; max-width: 240px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 12px;
+    font-size: 14px; font-family: inherit; color: var(--text);
+    outline: none; transition: border-color 0.2s;
+  }
+  .ns-input:focus { border-color: var(--accent); }
+  .ns-tip { font-size: 12px; color: var(--text-muted); }
+
+  /* ── 容器 ── */
+  .container {
+    max-width: 680px; margin: 0 auto; padding: 20px 16px 0;
+  }
+
+  /* ── 状态 ── */
+  .state-box {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+  .state-box .icon { font-size: 36px; margin-bottom: 10px; }
+  .state-box p { font-size: 14px; }
+
+  /* ── 分享卡片 ── */
+  .share-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 14px;
+    overflow: hidden;
+    transition: box-shadow 0.2s;
+  }
+  .share-card.syncing { opacity: 0.6; pointer-events: none; }
+
+  .card-body { padding: 16px 18px 14px; }
+
+  /* 作者行 */
+  .card-author {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 500; color: #fff;
+    flex-shrink: 0; overflow: hidden;
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .author-info { flex: 1; min-width: 0; }
+  .author-name {
+    font-size: 14px; font-weight: 500;
+    display: flex; align-items: center; gap: 5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .badge {
+    font-size: 10px; padding: 1px 6px;
+    border-radius: 8px; color: #fff; font-weight: 400; flex-shrink: 0;
+  }
+  .author-time { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+  /* 正文预览 */
+  .card-preview {
+    font-size: 14px; line-height: 1.65; color: var(--text);
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden; margin-bottom: 10px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .card-preview.empty { color: var(--text-muted); font-style: italic; }
+
+  /* 媒体标签 */
+  .card-media-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12px; color: var(--text-muted);
+    background: var(--bg); border-radius: 6px;
+    padding: 2px 8px; margin-bottom: 10px;
+  }
+
+  /* 元信息行 */
+  .card-meta {
+    display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; margin-bottom: 12px;
+  }
+  .meta-tag {
+    font-size: 11px; color: var(--text-muted);
+    background: var(--bg); border-radius: 6px; padding: 2px 8px;
+  }
+  .meta-tag.synced { color: var(--green); background: var(--green-light); }
+  .meta-tag.never  { color: var(--text-muted); }
+
+  /* 链接行 */
+  .card-link {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+  }
+  .link-text {
+    flex: 1; font-size: 12px; color: var(--accent);
+    background: var(--accent-light); border-radius: 7px;
+    padding: 5px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer; transition: opacity 0.2s;
+    font-family: monospace;
+  }
+  .link-text:hover { opacity: 0.75; }
+  .copy-btn {
+    font-size: 12px; padding: 5px 12px;
+    background: var(--accent-light); color: var(--accent);
+    border: 1px solid #f0ddd0; border-radius: 7px;
+    cursor: pointer; white-space: nowrap; transition: opacity 0.2s;
+    font-family: inherit;
+  }
+  .copy-btn:hover { opacity: 0.75; }
+  .copy-btn.copied { color: var(--green); background: var(--green-light); border-color: #c5e5cf; }
+
+  /* 操作按钮 */
+  .card-actions { display: flex; gap: 8px; border-top: 1px solid var(--border); padding: 12px 18px; }
+  .btn {
+    flex: 1; padding: 9px; border-radius: 9px;
+    font-size: 13px; font-family: inherit; font-weight: 500;
+    cursor: pointer; border: none; transition: opacity 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+  }
+  .btn:hover { opacity: 0.82; }
+  .btn-sync {
+    background: var(--accent); color: #fff;
+  }
+  .btn-sync:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-delete {
+    background: var(--danger-light); color: var(--danger);
+    flex: 0 0 auto; padding: 9px 16px;
+  }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #2c2825; color: #fff;
+    font-size: 13px; padding: 10px 20px; border-radius: 20px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s;
+    white-space: nowrap; z-index: 999;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.success { background: var(--green); }
+  .toast.error   { background: var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">分享管理</div>
+  <div class="header-count" id="headerCount">加载中…</div>
+</div>
+
+<div class="ns-bar">
+  <div class="ns-label">命名空间</div>
+  <input class="ns-input" id="nsInput" type="text" placeholder="moments" value="moments">
+  <div class="ns-tip">同步时使用</div>
+</div>
+
+<div class="container">
+  <div id="stateBox" class="state-box">
+    <div class="icon">⏳</div><p>加载中…</p>
+  </div>
+  <div id="shareList"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, get, set, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+// ── 工具 ──
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function timeAgo(ts) {
+  if (!ts) return '从未';
+  const diff = Date.now() - ts;
+  if (diff < 60000)      return '刚刚';
+  if (diff < 3600000)    return Math.floor(diff / 60000) + ' 分钟前';
+  if (diff < 86400000)   return Math.floor(diff / 3600000) + ' 小时前';
+  if (diff < 2592000000) return Math.floor(diff / 86400000) + ' 天前';
+  return new Date(ts).toLocaleDateString('zh-CN');
+}
+
+function clean(obj) {
+  return JSON.parse(JSON.stringify(obj, (k, v) => v === undefined ? null : v));
+}
+
+function toList(val) {
+  if (!val) return [];
+  return Array.isArray(val) ? val.filter(Boolean) : Object.values(val).filter(Boolean);
+}
+
+// ── Toast ──
+let toastTimer = null;
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 2200);
+}
+
+// ── 渲染单张卡片 ──
+function renderCard(postId, data) {
+  const post    = data.post    || {};
+  const accounts = data.accounts || {};
+  const syncedAt = data._meta?.syncedAt || null;
+
+  const accountsMap = {};
+  toList(accounts).forEach(a => { if (a?.id) accountsMap[a.id] = a; });
+  // accounts 也可能直接是对象
+  if (!Array.isArray(accounts)) {
+    Object.values(accounts).forEach(a => { if (a?.id) accountsMap[a.id] = a; });
+  }
+
+  const account  = accountsMap[post.userId] || {};
+  const name     = account.nickname || '未知用户';
+  const avatarBg = account.avatarBg || '#aaa';
+  const avatarT  = account.avatarText || name[0] || '?';
+  const badge    = account.badgeText  || '';
+  const badgeC   = account.badgeColor || '#aaa';
+  const isAI     = !!account.isAI;
+
+  const avatarHtml = account.avatar
+    ? `<div class="avatar" style="background:${escHtml(avatarBg)}"><img src="${escHtml(account.avatar)}" alt=""></div>`
+    : `<div class="avatar" style="background:${escHtml(avatarBg)}">${escHtml(avatarT)}</div>`;
+
+  const previewText = post.text
+    ? post.text.replace(/[#*`_~>|\[\]]/g, '').trim()
+    : '';
+
+  const hasImages = post.images?.length > 0;
+  const hasVideos = post.videos?.length > 0;
+  const mediaTag  = (hasImages || hasVideos)
+    ? `<div class="card-media-tag">
+        ${hasImages ? `🖼️ ${post.images.length} 张图片` : ''}
+        ${hasImages && hasVideos ? ' · ' : ''}
+        ${hasVideos ? `🎬 ${post.videos.length} 个视频` : ''}
+       </div>`
+    : '';
+
+  const shareUrl = `${location.origin}/share.html?id=${postId}`;
+  const syncTag  = syncedAt
+    ? `<span class="meta-tag synced">↑ 同步于 ${timeAgo(syncedAt)}</span>`
+    : `<span class="meta-tag never">未同步过</span>`;
+  const postTime = post.timestamp
+    ? `<span class="meta-tag">发布于 ${timeAgo(post.timestamp)}</span>`
+    : '';
+
+  return `
+    <div class="share-card" id="card-${escHtml(postId)}">
+      <div class="card-body">
+        <div class="card-author">
+          ${avatarHtml}
+          <div class="author-info">
+            <div class="author-name">
+              ${escHtml(name)}
+              ${badge ? `<span class="badge" style="background:${escHtml(badgeC)}">${escHtml(badge)}</span>` : ''}
+              ${isAI  ? `<span class="badge" style="background:#6c5ce7">AI</span>` : ''}
+            </div>
+            <div class="author-time">${timeAgo(post.timestamp)}</div>
+          </div>
+        </div>
+        ${previewText
+          ? `<div class="card-preview">${escHtml(previewText)}</div>`
+          : `<div class="card-preview empty">（无文字内容）</div>`}
+        ${mediaTag}
+        <div class="card-meta">${postTime}${syncTag}</div>
+        <div class="card-link">
+          <div class="link-text" title="${escHtml(shareUrl)}">${escHtml(shareUrl)}</div>
+          <button class="copy-btn" data-url="${escHtml(shareUrl)}" data-id="${escHtml(postId)}">复制链接</button>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-sync" data-id="${escHtml(postId)}">↑ 同步最新</button>
+        <button class="btn btn-delete" data-id="${escHtml(postId)}">删除</button>
+      </div>
+    </div>`;
+}
+
+// ── 同步单条 ──
+async function syncShare(postId) {
+  const ns = document.getElementById('nsInput').value.trim();
+  if (!ns) { showToast('请先填写命名空间', 'error'); return; }
+
+  const card = document.getElementById(`card-${postId}`);
+  card?.classList.add('syncing');
+
+  try {
+    // 拉最新 post
+    const postsSnap = await get(ref(db, `${ns}/posts`));
+    if (!postsSnap.exists()) throw new Error(`${ns}/posts 没有数据`);
+    const posts = toList(postsSnap.val());
+    const post  = posts.find(p => p?.id === postId);
+    if (!post) throw new Error(`找不到 id=${postId} 的帖子`);
+
+    // 拉最新 accounts
+    const accSnap  = await get(ref(db, `${ns}/accounts`));
+    const accList  = accSnap.exists() ? toList(accSnap.val()) : [];
+    const accMap   = {};
+    accList.forEach(a => { if (a?.id) accMap[a.id] = a; });
+
+    const nowTs = Date.now();
+    await Promise.all([
+      set(ref(db, `shares/${postId}/post`),     clean(post)),
+      set(ref(db, `shares/${postId}/accounts`), clean(accMap)),
+      set(ref(db, `shares/${postId}/_meta/syncedAt`), nowTs),
+    ]);
+
+    showToast('同步成功', 'success');
+
+    // 刷新这张卡片
+    const snap = await get(ref(db, `shares/${postId}`));
+    if (snap.exists()) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = renderCard(postId, snap.val());
+      const newCard = tmp.firstElementChild;
+      card?.replaceWith(newCard);
+      bindCard(newCard);
+    }
+  } catch (e) {
+    console.error(e);
+    showToast('同步失败：' + e.message, 'error');
+  } finally {
+    card?.classList.remove('syncing');
+  }
+}
+
+// ── 删除分享 ──
+async function deleteShare(postId) {
+  if (!confirm('删除后分享链接将失效，确认删除？')) return;
+  try {
+    await remove(ref(db, `shares/${postId}`));
+    document.getElementById(`card-${postId}`)?.remove();
+    // 更新计数
+    const remaining = document.querySelectorAll('.share-card').length;
+    document.getElementById('headerCount').textContent = `${remaining} 条`;
+    if (remaining === 0) {
+      document.getElementById('stateBox').style.display = '';
+      document.getElementById('stateBox').innerHTML = '<div class="icon">📭</div><p>还没有分享过任何内容</p>';
+    }
+    showToast('已删除');
+  } catch (e) {
+    showToast('删除失败', 'error');
+  }
+}
+
+// ── 复制链接 ──
+function copyLink(url, btn) {
+  navigator.clipboard.writeText(url).then(() => {
+    btn.textContent = '已复制 ✓';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '复制链接';
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(() => showToast('复制失败', 'error'));
+}
+
+// ── 绑定卡片事件 ──
+function bindCard(card) {
+  card.querySelector('.btn-sync')?.addEventListener('click', e => {
+    syncShare(e.currentTarget.dataset.id);
+  });
+  card.querySelector('.btn-delete')?.addEventListener('click', e => {
+    deleteShare(e.currentTarget.dataset.id);
+  });
+  card.querySelector('.copy-btn')?.addEventListener('click', e => {
+    copyLink(e.currentTarget.dataset.url, e.currentTarget);
+  });
+  card.querySelector('.link-text')?.addEventListener('click', e => {
+    const url = e.currentTarget.title;
+    copyLink(url, card.querySelector('.copy-btn'));
+  });
+}
+
+// ── 主逻辑 ──
+async function main() {
+  try {
+    const snap = await get(ref(db, 'shares'));
+
+    if (!snap.exists()) {
+      document.getElementById('stateBox').innerHTML = '<div class="icon">📭</div><p>还没有分享过任何内容</p>';
+      document.getElementById('headerCount').textContent = '0 条';
+      return;
+    }
+
+    const val = snap.val();
+    // 过滤掉 _guests 这个特殊 key
+    const postIds = Object.keys(val).filter(k => k !== '_guests');
+
+    if (postIds.length === 0) {
+      document.getElementById('stateBox').innerHTML = '<div class="icon">📭</div><p>还没有分享过任何内容</p>';
+      document.getElementById('headerCount').textContent = '0 条';
+      return;
+    }
+
+    document.getElementById('stateBox').style.display = 'none';
+    document.getElementById('headerCount').textContent = `${postIds.length} 条`;
+
+    // 按快照里的 post.timestamp 倒序排列
+    postIds.sort((a, b) => {
+      const ta = val[a]?.post?.timestamp || 0;
+      const tb = val[b]?.post?.timestamp || 0;
+      return tb - ta;
+    });
+
+    const list = document.getElementById('shareList');
+    list.innerHTML = postIds.map(id => renderCard(id, val[id] || {})).join('');
+    list.querySelectorAll('.share-card').forEach(bindCard);
+
+  } catch (e) {
+    console.error(e);
+    document.getElementById('stateBox').innerHTML = '<div class="icon">⚠️</div><p>加载失败，请刷新重试</p>';
+  }
+}
+
+main();
+</script>
+</body>
+</html>
