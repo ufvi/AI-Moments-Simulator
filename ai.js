@@ -1,6 +1,28 @@
 (function () {
     const $ = (s) => document.querySelector(s);
 
+    // ── 从 AI 回复中提取 shouldLike 决策（宽松正则，不依赖完整 JSON）──
+    function extractShouldLike(text) {
+        const m = text.match(/"shouldLike"\s*:\s*(true|false)/i);
+        return m ? m[1] === 'true' : false;
+    }
+    // 从回复末尾剥离 JSON 元数据
+    function stripJsonMetadata(text) {
+        return text.replace(/\s*\{[^}]*"shouldLike"[^}]*\}\s*$/g, '').trim();
+    }
+    // ── 让 AI 账号点赞帖子 ──
+    function applyAILike(postId, aiId) {
+        const post = window.App.posts.find(p => p.id === postId);
+        if (!post) return;
+        if (post.likes.includes(aiId)) return; // 已点过
+        post.likes.push(aiId);
+        window.App.savePosts();
+        // 在后台刷新卡片以更新点赞栏
+        if (window.App.updateCard) {
+            window.App.updateCard(postId);
+        }
+    }
+
     function ensureAIAccount() {
         // 确保 activeAIId 指向一个仍然存在的 AI 账号，但不自动创建新账号
         if (window.App.activeAIId && !window.App.accounts.find(a => a.id === window.App.activeAIId && a.isAI)) {
@@ -101,9 +123,12 @@
 
                 const aiName = aiAcc.nickname || 'AI助手';
                 const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
-                let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设。请用简短的口语为朋友圈生成评论。直接给出评论内容，不要在评论前加上名字。`;
+                let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设。请用简短的口语为朋友圈生成评论。直接给出评论内容，不要在评论前加上名字。
+
+**请使用 Markdown 格式排版**，以获得更好的呈现效果。`;
                 const activeStyle = aiAcc.style || '';
                 if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
+                systemPrompt += ` 另外请在评论末尾附一个JSON表示你是否要点赞这条帖子：{"shouldLike":true} 或 {"shouldLike":false}。`;
 
                 const author = window.App.getAcc(post.userId)?.nickname || '用户';
                 const timeDesc = window.App.formatTime(post.timestamp);
@@ -111,6 +136,8 @@
                     ? `你（${author}）于 ${timeDesc} 自己发布了这条动态`
                     : `${author} 于 ${timeDesc} 发布了动态`;
                 if (post.text) contentDesc += `：${post.text}`;
+                const likedNames = (post.likes || []).map(uid => window.App.getAcc(uid)?.nickname || '未知').join('、');
+                if (likedNames) contentDesc += `\n\n当前已有点赞：${likedNames}。`;
 
                 const messages = isVolcengine
                     ? [{ role: 'user', content: [{ type: 'input_text', text: systemPrompt + '\n\n' + contentDesc }] }]
@@ -137,10 +164,14 @@
                     throw new Error(errMsg);
                 }
                 const data = await res.json();
-                const newReply = (isVolcengine
+                const rawReply = (isVolcengine
                     ? data.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
                     : data.choices?.[0]?.message?.content)?.trim();
-                if (!newReply) throw new Error('未生成有效回复');
+                if (!rawReply) throw new Error('未生成有效回复');
+
+                const shouldLike = extractShouldLike(rawReply);
+                const newReply = stripJsonMetadata(rawReply);
+                if (shouldLike) applyAILike(postId, aiAcc.id);
 
                 textarea.value = newReply;
                 textarea.focus();
@@ -267,8 +298,10 @@
         const fixedSuffix = '，请用简短的口语为朋友圈生成评论。';
         let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设，不要将其他用户的评论当成你的发言。${fixedSuffix}`;
         systemPrompt += `直接给出评论内容，不要在评论前加上"${aiName}："或类似称呼。`;
+        systemPrompt += `\n\n**请使用 Markdown 格式排版**，以获得更好的呈现效果。`;
         const activeStyle = selectedAIAcc?.style || '';
         if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
+        systemPrompt += ` 另外请在评论末尾附一个JSON表示你是否要点赞这条帖子：{"shouldLike":true} 或 {"shouldLike":false}。`;
 
         const isVolcengine = /volces\.com/i.test(window.App.aiConfig.endpoint);
         const messages = [{ role: 'system', content: systemPrompt }];
@@ -290,6 +323,8 @@
         contentDesc += isSelfPost
             ? ' 这是你自己的帖子，请以作者身份补充一句回应评论区的话，或者分享一点后续感受。'
             : ' 请以你的身份写一句评论。';
+        const likedNames = (post.likes || []).filter(uid => uid !== selectedAIId).map(uid => window.App.getAcc(uid)?.nickname || '未知').join('、');
+        if (likedNames) contentDesc += `\n\n当前已有点赞：${likedNames}。`;
 
         // ===== 构造 user 消息（多模态 vs 纯文本） =====
         // 火山引擎：图片延后到最终 user 轮附加，避免出现在非末尾位置导致 400
@@ -375,10 +410,14 @@
             }
             const data = await res.json();
             // 火山引擎 responses API 返回 output（含 reasoning + message），OpenAI 返回 choices
-            const reply = (isVolcengine
+            const rawReply = (isVolcengine
                 ? data.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
                 : data.choices?.[0]?.message?.content)?.trim();
-            if (!reply) throw new Error('未生成有效回复');
+            if (!rawReply) throw new Error('未生成有效回复');
+
+            const shouldLike = extractShouldLike(rawReply);
+            const reply = stripJsonMetadata(rawReply);
+            if (shouldLike) applyAILike(postId, selectedAIAcc.id);
 
             showAICommentModal(postId, selectedAIAcc, reply);
         } catch (e) {
@@ -443,7 +482,7 @@
             if (delBtn) delBtn.style.display = window.App.aiPresets.length > 1 ? '' : 'none';
         }
 
-        overlay.innerHTML = '<div class="modal-dialog" style="max-width:380px;">' +
+        overlay.innerHTML = '<div class="modal-dialog" style="max-width:min(90vw, 480px);">' +
             '<h3>🤖 AI API 配置</h3>' +
             '<label>方案</label>' +
             '<div style="display:flex;gap:6px;margin-top:4px;">' +
@@ -913,7 +952,9 @@
             const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
             const style = aiAcc.style ? ` 风格要求：${aiAcc.style}。` : '';
             const makePostMessages = () => ([
-                { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
+                { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。
+
+**请使用 Markdown 格式排版**，以获得更好的呈现效果。` },
                 { role: 'user', content: `情境：${situation}` }
             ]);
 
@@ -965,17 +1006,19 @@
                 <div style="font-size:11px;color:var(--text-light);margin-bottom:6px;font-weight:600;">${window.App.escapeHtml(draft.label)}</div>
                 <div class="ai-draft-text" data-idx="${i}">${window.App.escapeHtml(draft.text)}</div>
                 <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+                    <button class="btn btn-cancel draft-copy-btn" data-idx="${i}"
+                        style="padding:4px 12px;font-size:12px;">📋 复制</button>
                     ${hasRegen ? `<button class="btn btn-cancel draft-regen-btn" data-idx="${i}"
-                        style="padding:4px 12px;font-size:12px;">🔄 重新生成</button>` : ''}
+                        style="padding:4px 12px;font-size:12px;">🔄 重写</button>` : ''}
                     <button class="btn btn-cancel draft-edit-btn" data-idx="${i}"
-                        style="padding:4px 12px;font-size:12px;">✏️ 编辑后发</button>
+                        style="padding:4px 12px;font-size:12px;">✏️ 编辑</button>
                     <button class="btn btn-save draft-use-btn" data-idx="${i}"
-                        style="padding:4px 12px;font-size:12px;">✅ 直接发布</button>
+                        style="padding:4px 12px;font-size:12px;">✅ 发布</button>
                 </div>
             </div>`).join('');
 
         overlay.innerHTML = `
-            <div class="modal-dialog" style="overflow:hidden;padding:0;">
+            <div class="modal-dialog" style="overflow:hidden;padding:0;max-width:min(90vw, 640px);">
                 <div style="max-height:80vh;overflow-y:auto;padding:20px;">
                     <h3>${title}</h3>
                     <p style="font-size:13px;color:var(--text-light);margin:-4px 0 14px;">${subtitle}</p>
@@ -987,6 +1030,26 @@
                 </div>
             </div>`;
         document.body.appendChild(overlay);
+
+        overlay.querySelectorAll('.draft-copy-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.dataset.idx);
+                const text = drafts[idx].text;
+                navigator.clipboard.writeText(text).then(() => {
+                    window.App.showToast('✅ 已复制');
+                }).catch(() => {
+                    // fallback
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                    window.App.showToast('✅ 已复制');
+                });
+            };
+        });
 
         overlay.querySelectorAll('.draft-use-btn').forEach(btn => {
             btn.onclick = (e) => {
@@ -1093,7 +1156,7 @@
         overlay.className = 'modal-overlay';
         overlay.style.display = 'flex';
         overlay.innerHTML = `
-            <div class="modal-dialog" style="max-width:340px;">
+            <div class="modal-dialog" style="max-width:480px;">
                 <h3>✍️ AI 代写</h3>
                 <p style="font-size:12px;color:var(--text-light);margin:-4px 0 12px;">
                     写下你的经历，让各 AI 人设帮你表达，以你的身份发出
@@ -1106,7 +1169,7 @@
                            color:var(--text);font-size:14px;min-height:100px;
                            font-family:inherit;outline:none;"
                     maxlength="300"></textarea>
-                <label style="font-size:13px;color:var(--text);margin-top:12px;display:block;">选择代写的 AI 人设</label>
+                <label style="font-size:13px;color:var(--text);margin-top:6px;display:block;">选择代写的 AI 人设</label>
                 <button id="ghostSelectAll" style="margin-top:6px;padding:2px 12px;border-radius:12px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:12px;cursor:pointer;">全选</button>
                 <div id="ghostPersonaList" style="margin-top:6px;display:flex;flex-direction:column;gap:6px;">
                     ${aiAccounts.map(a => `
@@ -1219,7 +1282,9 @@
                     const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
                     const style = aiAcc.style ? ` 风格要求：${aiAcc.style}。` : '';
                     const msgs = [
-                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
+                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看的暗语或纯情绪发泄。直接输出正文。
+
+**请使用 Markdown 格式排版**，以获得更好的呈现效果。` },
                         { role: 'user', content: `情境：${ghostInput}` }
                     ];
                     return callAPI(msgs, 2000).then(text => ({ text, aiAcc }));
@@ -1244,11 +1309,14 @@
                     const basePrompt = draft.aiAcc.systemPrompt || '你是一个友善的朋友';
                     const style = draft.aiAcc.style ? ` 风格要求：${draft.aiAcc.style}。` : '';
                     const msgs = [
-                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。` },
+                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看的暗语或纯情绪发泄。直接输出正文。
+
+**请使用 Markdown 格式排版**，以获得更好的呈现效果。` },
                         { role: 'user', content: `情境：${ghostInput}` }
                     ];
                     return await callAPI(msgs, 2000);
-                }
+                },
+                () => openGhostWriterModal()
             );
         } catch (e) {
             if ($thinkingBar) $thinkingBar.classList.remove('visible');
@@ -1398,7 +1466,7 @@
         overlay.className = 'modal-overlay';
         overlay.style.display = 'flex';
         overlay.innerHTML = `
-            <div class="modal-dialog" style="max-width:320px;">
+            <div class="modal-dialog" style="max-width:min(90vw, 480px);">
                 <h3>✍️ 代笔详情</h3>
                 <p style="font-size:13px;color:var(--text-light);margin:0 0 6px;">
                     由 <b>${aiName}</b> 代写

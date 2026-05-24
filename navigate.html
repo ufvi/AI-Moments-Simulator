@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空间跳转</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0f0f1a;
+            --bg-secondary: #1a1a2e;
+            --bg-card: rgba(26, 26, 46, 0.6);
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0b0;
+            --accent: #6c5ce7;
+            --accent-hover: #7c6cf7;
+            --border: rgba(255, 255, 255, 0.08);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            --glass-bg: rgba(26, 26, 46, 0.5);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --fixed-link-bg: rgba(0, 206, 209, 0.08);
+            --fixed-link-border: rgba(0, 206, 209, 0.25);
+            --fixed-link-color: #00cec9;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-primary);
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(ellipse at 30% 20%, rgba(108, 92, 231, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(0, 206, 209, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(255, 107, 107, 0.04) 0%, transparent 50%);
+            z-index: 0;
+            pointer-events: none;
+            animation: bgFloat 20s ease-in-out infinite;
+        }
+
+        @keyframes bgFloat {
+            0%,
+            100% {
+                transform: translate(0, 0);
+            }
+            33% {
+                transform: translate(1%, -1%);
+            }
+            66% {
+                transform: translate(-1%, 1%);
+            }
+        }
+
+        .main-container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 680px;
+            padding: 20px;
+        }
+
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 32px 28px;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            box-shadow: 0 12px 40px rgba(108, 92, 231, 0.15);
+        }
+
+        .app-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #a78bfa, #6c5ce7, #00cec9);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .app-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 28px;
+            letter-spacing: 1px;
+        }
+
+        .branch-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .branch-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .branch-row input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 10px 14px;
+            color: #fff;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .branch-row input:focus {
+            border-color: var(--accent);
+        }
+        .branch-row input::placeholder {
+            color: rgba(255, 255, 255, 0.2);
+        }
+
+        .input-group-custom {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .input-group-custom input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px 18px;
+            color: #fff;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .input-group-custom input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.15);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .input-group-custom input::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 0.9rem;
+        }
+
+        .btn-gradient {
+            background: linear-gradient(135deg, #6c5ce7, #00cec9);
+            border: none;
+            border-radius: 14px;
+            padding: 14px 24px;
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-gradient:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(108, 92, 231, 0.35);
+        }
+
+        .btn-gradient:active {
+            transform: translateY(0);
+            box-shadow: 0 4px 12px rgba(108, 92, 231, 0.25);
+        }
+
+        .section-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .section-label span {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+
+        .quick-links-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        /* 固定链接标签 */
+        .fixed-link-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--fixed-link-bg);
+            border: 1px solid var(--fixed-link-border);
+            border-radius: 20px;
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            color: var(--fixed-link-color);
+            cursor: pointer;
+            transition: all 0.25s ease;
+            user-select: none;
+            font-weight: 500;
+        }
+
+        .fixed-link-tag:hover {
+            background: rgba(0, 206, 209, 0.18);
+            border-color: var(--fixed-link-color);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 206, 209, 0.2);
+        }
+
+        .fixed-link-tag i {
+            font-size: 0.9rem;
+        }
+
+        /* 自定义快捷标签 */
+        .quick-link-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(108, 92, 231, 0.15);
+            border: 1px solid rgba(108, 92, 231, 0.25);
+            border-radius: 20px;
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            color: #c4b5fd;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            user-select: none;
+        }
+
+        .quick-link-tag:hover {
+            background: rgba(108, 92, 231, 0.3);
+            border-color: var(--accent);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(108, 92, 231, 0.2);
+        }
+
+        .quick-link-tag .remove-tag {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #a0a0b0;
+            font-size: 0.7rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            line-height: 1;
+        }
+
+        .quick-link-tag .remove-tag:hover {
+            background: rgba(255, 107, 107, 0.4);
+            color: #ff6b6b;
+        }
+
+        .quick-link-tag.add-new {
+            background: transparent;
+            border-style: dashed;
+            color: var(--text-secondary);
+        }
+
+        .quick-link-tag.add-new:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.3);
+            color: #fff;
+        }
+
+        .history-list {
+            list-style: none;
+            max-height: 240px;
+            overflow-y: auto;
+            margin-bottom: 0;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+        }
+
+        .history-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .history-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .history-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .history-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 4px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            gap: 10px;
+        }
+
+        .history-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .history-item .history-name {
+            font-weight: 500;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .history-item .history-time {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            opacity: 0.7;
+        }
+
+        .history-item .history-actions {
+            display: flex;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .history-item:hover .history-actions {
+            opacity: 1;
+        }
+
+        .btn-icon-sm {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            font-size: 0.75rem;
+        }
+
+        .btn-icon-sm:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+
+        .btn-icon-sm.danger:hover {
+            background: rgba(255, 107, 107, 0.2);
+            border-color: rgba(255, 107, 107, 0.3);
+            color: #ff6b6b;
+        }
+
+        .toast-custom {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            padding: 14px 20px;
+            color: #fff;
+            font-size: 0.85rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            transform: translateX(120%);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+        }
+
+        .toast-custom.show {
+            transform: translateX(0);
+        }
+
+        @media (max-width: 576px) {
+            .glass-card {
+                padding: 24px 18px;
+                border-radius: 20px;
+            }
+            .app-title {
+                font-size: 1.4rem;
+            }
+            .input-group-custom {
+                flex-direction: column;
+                gap: 8px;
+            }
+            .btn-gradient {
+                width: 100%;
+                padding: 14px;
+            }
+            .history-item .history-actions {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="glass-card">
+            <h1 class="app-title">🌐 空间跳转</h1>
+            <p class="app-subtitle">输入空间名打开页面，留空则进入主页</p>
+
+            <div class="input-group-custom">
+                <input type="text" id="spaceInput" placeholder="空间名（留空打开首页）" autocomplete="off" />
+                <button class="btn-gradient" id="goBtn"><i class="bi bi-box-arrow-up-right"></i> 打开</button>
+            </div>
+
+            <div class="branch-row">
+                <label for="branchInput" class="branch-label">🌿 分支</label>
+                <input type="text" id="branchInput" list="branchList" value="" placeholder="分支名" autocomplete="off" />
+                <datalist id="branchList">
+                    <option value="test">
+                    <option value="ufvi-patch-1">
+                </datalist>
+            </div>
+
+            <div class="section-label">
+                <span><i class="bi bi-pin-angle-fill"></i> 快捷跳转</span>
+                <span style="cursor:pointer;font-size:0.75rem;color:var(--accent);" id="manageQuickBtn"><i class="bi bi-plus-circle"></i> 添加</span>
+            </div>
+            <div class="quick-links-container" id="quickLinksContainer"></div>
+
+            <hr style="border-color:var(--border);margin:20px 0;">
+
+            <div class="section-label">
+                <span><i class="bi bi-clock-history"></i> 历史记录</span>
+                <span style="cursor:pointer;font-size:0.75rem;color:var(--accent);" id="clearHistoryBtn"><i class="bi bi-trash"></i> 清空</span>
+            </div>
+            <ul class="history-list" id="historyList">
+                <li style="text-align:center;color:rgba(255,255,255,0.2);padding:20px;font-size:0.85rem;">暂无历史记录</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="toast-custom" id="toast"></div>
+
+    <div class="modal fade" id="addQuickModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="background:var(--bg-secondary);border:1px solid var(--glass-border);border-radius:20px;color:#fff;">
+                <div class="modal-header" style="border-bottom:1px solid var(--border);">
+                    <h5 class="modal-title" style="font-weight:600;">添加快捷跳转</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" class="form-control" id="newQuickName" placeholder="输入空间名或完整链接" style="background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:12px;padding:12px 16px;color:#fff;" />
+                    <div class="form-text" style="color:var(--text-secondary);font-size:0.75rem;margin-top:6px;">
+                        💡 输入“test”会跳转到空间，输入“https://...”则直接打开该链接
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top:1px solid var(--border);">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="border-radius:10px;">取消</button>
+                    <button type="button" class="btn btn-gradient" id="confirmAddQuick" style="border-radius:10px;">确认添加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        (function() {
+            const spaceInput = document.getElementById('spaceInput');
+            const branchInput = document.getElementById('branchInput');
+            const goBtn = document.getElementById('goBtn');
+            const quickLinksContainer = document.getElementById('quickLinksContainer');
+            const manageQuickBtn = document.getElementById('manageQuickBtn');
+            const historyList = document.getElementById('historyList');
+            const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+            const toast = document.getElementById('toast');
+            const newQuickName = document.getElementById('newQuickName');
+            const confirmAddQuick = document.getElementById('confirmAddQuick');
+            const addQuickModal = new bootstrap.Modal(document.getElementById('addQuickModal'));
+
+            const STORAGE_KEY_QUICK = 'space_jumper_quick_links_v2';
+            const STORAGE_KEY_HISTORY = 'space_jumper_history';
+
+            // 固定的常用链接
+            const FIXED_LINKS = [
+                { label: 'Firebase', url: 'https://console.firebase.google.com/', icon: 'bi-google' },
+                { label: 'Cloudflare Pages', url: 'https://dash.cloudflare.com/', icon: 'bi-cloud' },
+                { label: 'GitHub', url: 'https://github.com/ufvi/new-moment/', icon: 'bi-github' },
+                { label: 'ufvi', url: 'https://new-moment.pages.dev/?ns=ufvi', icon: 'bi-stars' },
+                { label: 'test', url: 'https://test.new-moment.pages.dev/?ns=test', icon: 'bi-bug' },
+                { label: 'patch-ufvi', url: 'https://ufvi-patch-1.new-moment.pages.dev/?ns=test', icon: 'bi-patch-check' },
+                //{ label: '相册', url: 'https://kyky-331.pages.dev/', icon: 'bi-images' },
+                { label: 'AI-CHAT', url: 'https://aiichat.pages.dev/', icon: 'bi-robot' }
+            ];
+
+            // ---------- 工具函数 ----------
+            function isURL(str) {
+                return /^https?:\/\//i.test(str.trim());
+            }
+
+            function getQuickLinks() {
+                try {
+                    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_QUICK)) || [];
+                    // 数据迁移：旧版可能是字符串数组
+                    if (raw.length && typeof raw[0] === 'string') {
+                        return raw.map(name => ({ type: 'space', value: name }));
+                    }
+                    return raw.filter(item => item && item.type && item.value);
+                } catch (e) {
+                    return [];
+                }
+            }
+
+            function saveQuickLinks(links) {
+                localStorage.setItem(STORAGE_KEY_QUICK, JSON.stringify(links));
+            }
+
+            function getHistory() {
+                try {
+                    return JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY)) || [];
+                } catch (e) {
+                    return [];
+                }
+            }
+
+            function saveHistory(history) {
+                localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(history));
+            }
+
+            function showToast(message) {
+                toast.textContent = message;
+                toast.classList.add('show');
+                clearTimeout(toast._timeout);
+                toast._timeout = setTimeout(() => toast.classList.remove('show'), 2000);
+            }
+
+            function formatTime(timestamp) {
+                const now = new Date();
+                const date = new Date(timestamp);
+                const diffMs = now - date;
+                const diffMin = Math.floor(diffMs / 60000);
+                const diffHour = Math.floor(diffMs / 3600000);
+                const diffDay = Math.floor(diffMs / 86400000);
+
+                if (diffMin < 1) return '刚刚';
+                if (diffMin < 60) return `${diffMin}分钟前`;
+                if (diffHour < 24) return `${diffHour}小时前`;
+                if (diffDay < 7) return `${diffDay}天前`;
+                const month = date.getMonth() + 1;
+                const day = date.getDate();
+                return `${month}/${day}`;
+            }
+
+            function escapeHtml(str) {
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            // ---------- 打开链接逻辑 ----------
+            function openSpace(name) {
+                const trimmed = name.trim();
+                let url;
+                if (!trimmed) {
+                    url = 'https://new-moment.pages.dev';
+                } else {
+                    var branch = branchInput.value.trim();
+                    if (branch === 'main') {
+                        url = `https://new-moment.pages.dev/?ns=${encodeURIComponent(trimmed)}`;
+                    } else if(`${branch}`) {
+                        url = `https://${branch}.new-moment.pages.dev/?ns=${encodeURIComponent(trimmed)}`;
+                    } else {
+                        url = `https://new-moment.pages.dev/?ns=${encodeURIComponent(trimmed)}`;
+                    }
+                }
+                window.open(url, '_blank');
+                if (trimmed) {
+                    addToHistory(trimmed);
+                }
+            }
+
+            function openQuickLink(linkItem) {
+                if (linkItem.type === 'space') {
+                    openSpace(linkItem.value);
+                } else if (linkItem.type === 'url') {
+                    window.open(linkItem.value, '_blank');
+                }
+            }
+
+            // ---------- 历史记录 ----------
+            function addToHistory(name) {
+                const history = getHistory();
+                const existingIndex = history.findIndex(item => item.name === name);
+                if (existingIndex !== -1) history.splice(existingIndex, 1);
+                history.unshift({ name, timestamp: Date.now() });
+                if (history.length > 50) history.length = 50;
+                saveHistory(history);
+                renderHistory();
+            }
+
+            function deleteHistoryItem(index) {
+                const history = getHistory();
+                if (index >= 0 && index < history.length) {
+                    const name = history[index].name;
+                    history.splice(index, 1);
+                    saveHistory(history);
+                    renderHistory();
+                    showToast(`已删除「${name}」`);
+                }
+            }
+
+            function clearAllHistory() {
+                if (getHistory().length === 0) {
+                    showToast('历史记录已为空');
+                    return;
+                }
+                if (confirm('确定要清空所有历史记录吗？此操作不可恢复。')) {
+                    saveHistory([]);
+                    renderHistory();
+                    showToast('✅ 历史记录已清空');
+                }
+            }
+
+            function renderHistory() {
+                const history = getHistory();
+                if (history.length === 0) {
+                    historyList.innerHTML = '<li style="text-align:center;color:rgba(255,255,255,0.2);padding:20px;font-size:0.85rem;">暂无历史记录</li>';
+                    return;
+                }
+                historyList.innerHTML = history.map((item, index) => `
+                    <li class="history-item" data-index="${index}">
+                        <span class="history-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>
+                        <span class="history-time">${formatTime(item.timestamp)}</span>
+                        <span class="history-actions">
+                            <button class="btn-icon-sm" data-action="open" data-index="${index}"><i class="bi bi-arrow-repeat"></i></button>
+                            <button class="btn-icon-sm danger" data-action="delete" data-index="${index}"><i class="bi bi-x-lg"></i></button>
+                        </span>
+                    </li>
+                `).join('');
+
+                historyList.querySelectorAll('.history-item').forEach(item => {
+                    item.addEventListener('click', function(e) {
+                        if (e.target.closest('[data-action]')) return;
+                        const index = parseInt(this.dataset.index);
+                        const h = getHistory();
+                        if (h[index]) openSpace(h[index].name);
+                    });
+                });
+                historyList.querySelectorAll('[data-action="open"]').forEach(btn => {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const index = parseInt(this.dataset.index);
+                        const h = getHistory();
+                        if (h[index]) openSpace(h[index].name);
+                    });
+                });
+                historyList.querySelectorAll('[data-action="delete"]').forEach(btn => {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        deleteHistoryItem(parseInt(this.dataset.index));
+                    });
+                });
+            }
+
+            // ---------- 快捷跳转渲染 ----------
+            function renderQuickLinks() {
+                const links = getQuickLinks();
+                quickLinksContainer.innerHTML = '';
+
+                // 先渲染固定的常用链接
+                FIXED_LINKS.forEach(link => {
+                    const tag = document.createElement('span');
+                    tag.className = 'fixed-link-tag';
+                    tag.innerHTML = `<i class="bi ${link.icon}"></i> ${escapeHtml(link.label)}`;
+                    tag.title = link.url;
+                    tag.addEventListener('click', () => window.open(link.url, '_blank'));
+                    quickLinksContainer.appendChild(tag);
+                });
+
+                // 再渲染用户自定义的快捷跳转
+                links.forEach((item, index) => {
+                    const tag = document.createElement('span');
+                    tag.className = 'quick-link-tag';
+                    const displayText = item.type === 'url' ? item.value : item.value;
+                    tag.innerHTML = `
+                        <span class="tag-name" title="${escapeHtml(displayText)}">${escapeHtml(displayText)}</span>
+                        <button class="remove-tag" data-index="${index}" title="移除">×</button>
+                    `;
+                    tag.querySelector('.tag-name').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openQuickLink(item);
+                    });
+                    tag.querySelector('.remove-tag').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        removeQuickLink(index);
+                    });
+                    quickLinksContainer.appendChild(tag);
+                });
+
+                // 新建按钮
+                const addTag = document.createElement('span');
+                addTag.className = 'quick-link-tag add-new';
+                addTag.innerHTML = '<i class="bi bi-plus-lg"></i> 新建';
+                addTag.addEventListener('click', () => {
+                    addQuickModal.show();
+                    setTimeout(() => newQuickName.focus(), 150);
+                });
+                quickLinksContainer.appendChild(addTag);
+            }
+
+            function addQuickLink(raw) {
+                const input = raw.trim();
+                if (!input) {
+                    showToast('⚠️ 请输入空间名或链接');
+                    return;
+                }
+                const links = getQuickLinks();
+                // 防止重复添加（比较值和类型）
+                const exists = links.some(l => l.value === input && l.type === (isURL(input) ? 'url' : 'space'));
+                if (exists) {
+                    showToast('⚠️ 该快捷跳转已存在');
+                    return;
+                }
+                if (links.length >= 15) {
+                    showToast('⚠️ 最多添加 15 个自定义快捷跳转');
+                    return;
+                }
+                const newItem = {
+                    type: isURL(input) ? 'url' : 'space',
+                    value: input
+                };
+                links.push(newItem);
+                saveQuickLinks(links);
+                renderQuickLinks();
+                showToast(`✅ 已添加「${input}」`);
+            }
+
+            function removeQuickLink(index) {
+                const links = getQuickLinks();
+                if (index >= 0 && index < links.length) {
+                    const removed = links[index].value;
+                    links.splice(index, 1);
+                    saveQuickLinks(links);
+                    renderQuickLinks();
+                    showToast(`已移除「${removed}」`);
+                }
+            }
+
+            // ---------- 事件绑定 ----------
+            goBtn.addEventListener('click', () => {
+                openSpace(spaceInput.value);
+                spaceInput.value = '';
+                spaceInput.focus();
+            });
+            spaceInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    openSpace(spaceInput.value);
+                    spaceInput.value = '';
+                }
+            });
+
+            manageQuickBtn.addEventListener('click', () => {
+                addQuickModal.show();
+                setTimeout(() => newQuickName.focus(), 150);
+            });
+
+            confirmAddQuick.addEventListener('click', () => {
+                addQuickLink(newQuickName.value);
+                newQuickName.value = '';
+                addQuickModal.hide();
+            });
+            newQuickName.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    addQuickLink(newQuickName.value);
+                    newQuickName.value = '';
+                    addQuickModal.hide();
+                }
+            });
+
+            clearHistoryBtn.addEventListener('click', clearAllHistory);
+
+            // 初始渲染
+            renderQuickLinks();
+            renderHistory();
+            spaceInput.focus();
+
+            console.log('🚀 空间跳转工具 v2 已就绪');
+        })();
+    </script>
+</body>
+</html>

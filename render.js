@@ -108,6 +108,8 @@
                 }
             });
         });
+        // 按评论条数从高到低排序
+        aiAccounts.sort(function (a, b) { return (aiCommentCounts[b.id] || 0) - (aiCommentCounts[a.id] || 0); });
         aiAccounts.forEach(function (a) {
             var isActive = a.id === window.App.activeAIId;
             var aiAvText = a.avatarText || '🤖';
@@ -367,6 +369,16 @@
             avHtml = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:11px">${cu.nickname?.charAt(0)?.toUpperCase() || '?'}</div>`;
         }
 
+        const textLen = (c.text || '').length;
+        let bodyHtml;
+        if (isAI && textLen > 80) {
+            bodyHtml = `<span class="cb-truncated">${window.App.escapeHtml((c.text || '').slice(0, 80))}…</span>
+                    <span class="cb-full">${window.App.parseMarkdown(c.text)}</span>
+                    <span class="cb-toggle">展开</span>`;
+        } else {
+            bodyHtml = window.App.parseMarkdown(c.text);
+        }
+
         return `<div class="comment-item${isAI ? ' ai-comment' : ''}">
             ${avHtml}
             <div class="comment-content">
@@ -374,7 +386,7 @@
                     <span class="comment-user">${window.App.escapeHtml(cu.nickname)}${window.App.getBadgeHtml(cu)}</span>
                     <span class="comment-time">${window.App.formatTime(c.timestamp)}</span>
                 </div>
-                <div class="comment-body ${isAI ? 'ai-comment-text' : ''}">${window.App.parseMarkdown(c.text)}</div>
+                <div class="comment-body ${isAI ? 'ai-comment-text' : ''}">${bodyHtml}</div>
             </div>
             <div class="comment-actions">
                 <button class="reply-btn" data-action="copy-comment" data-post-id="${postId}" data-comment-id="${c.id}">复制</button>
@@ -383,24 +395,59 @@
         </div>`;
     }
 
+    // ── 单条评论折叠切换 ──
+    function toggleCommentBody(el) {
+        const parent = el.parentElement;
+        const truncated = parent.querySelector('.cb-truncated');
+        const full = parent.querySelector('.cb-full');
+        const isExpanded = full.classList.contains('expanded');
+        full.classList.toggle('expanded');
+        truncated.classList.toggle('expanded');
+        el.textContent = isExpanded ? '展开' : '收起';
+    }
+
     // 只生成评论区的 HTML（.post-comments 容器 + 列表 + 折叠按钮）
     function renderCommentsHtml(post) {
         if (!post.comments || !post.comments.length) return '';
-        const shouldCollapse = post.comments.length > COMMENT_COLLAPSE_THRESHOLD;
+
+        // 将评论分为 AI 评论和真人评论，只折叠 AI 评论
+        const aiComments = post.comments.filter(c => {
+            const cu = window.App.getAcc(c.userId);
+            return cu && cu.isAI;
+        });
+        const shouldCollapse = aiComments.length > COMMENT_COLLAPSE_THRESHOLD;
         const isExpanded = expandedPosts.has(post.id);
-        const hiddenComments = shouldCollapse ? post.comments.slice(0, -COMMENT_COLLAPSE_THRESHOLD) : [];
-        const visibleComments = shouldCollapse ? post.comments.slice(-COMMENT_COLLAPSE_THRESHOLD) : post.comments;
-        let html = '<div class="post-comments" data-post-id="' + post.id + '">';
+
+        // 需要折叠的 AI 评论 ID（最老的几条）
+        const hiddenAiIds = new Set();
+        let hiddenCount = 0;
         if (shouldCollapse) {
+            const hiddenAi = aiComments.slice(0, -COMMENT_COLLAPSE_THRESHOLD);
+            hiddenAi.forEach(c => hiddenAiIds.add(c.id));
+            hiddenCount = hiddenAi.length;
+        }
+
+        let html = '<div class="post-comments" data-post-id="' + post.id + '">';
+
+        // 折叠区域 — 只装被隐藏的 AI 评论
+        if (shouldCollapse && hiddenCount > 0) {
             html += '<div class="comments-collapsed' + (isExpanded ? ' expanded' : '') + '" id="collapsed-' + post.id + '">';
-            hiddenComments.forEach(c => { html += renderCommentItem(c, post.id); });
+            post.comments.forEach(c => {
+                if (hiddenAiIds.has(c.id)) html += renderCommentItem(c, post.id);
+            });
             html += '</div>';
         }
-        visibleComments.forEach(c => { html += renderCommentItem(c, post.id); });
+
+        // 可见区域 — 真人评论全量 + 最新的 N 条 AI 评论
+        post.comments.forEach(c => {
+            if (!hiddenAiIds.has(c.id)) html += renderCommentItem(c, post.id);
+        });
+
         if (shouldCollapse) {
-            html += '<button class="comments-toggle-btn comments-expand-btn" data-action="toggle-comments" data-post-id="' + post.id + '" style="' + (isExpanded ? 'display:none;' : '') + '">展开 <span class="toggle-count">' + hiddenComments.length + '</span> 条评论 <span class="toggle-arrow">▾</span></button>';
+            html += '<button class="comments-toggle-btn comments-expand-btn" data-action="toggle-comments" data-post-id="' + post.id + '" style="' + (isExpanded ? 'display:none;' : '') + '">展开 <span class="toggle-count">' + hiddenCount + '</span> 条 AI 评论 <span class="toggle-arrow">▾</span></button>';
             html += '<button class="comments-toggle-btn comments-collapse-btn" data-action="toggle-comments" data-post-id="' + post.id + '" style="' + (isExpanded ? '' : 'display:none;') + '">收起评论 <span class="toggle-arrow">▴</span></button>';
         }
+
         html += '</div>';
         return html;
     }
@@ -452,6 +499,9 @@
             });
             newComments.querySelectorAll('[data-action="toggle-comments"]').forEach(b => {
                 b.onclick = () => window.App.toggleCommentCollapse(b.dataset.postId);
+            });
+            newComments.querySelectorAll('.cb-toggle').forEach(b => {
+                b.onclick = (e) => { e.stopPropagation(); toggleCommentBody(b); };
             });
             window.App.observeMediaInContainer(newComments);
         }
@@ -559,6 +609,7 @@
         $timeline.querySelectorAll('[data-action="share-link"]').forEach(b => b.onclick = () => window.App.shareLink(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="copy-post"]').forEach(b => b.onclick = () => window.App.copyPost(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="like"]').forEach(b => b.onclick = () => window.App.toggleLike(b.dataset.postId));
+        $timeline.querySelectorAll('.cb-toggle').forEach(b => b.onclick = (e) => { e.stopPropagation(); toggleCommentBody(b); });
         $timeline.querySelectorAll('[data-action="focus-comment"]').forEach(b => b.onclick = () => {
             const isMobile = window.matchMedia('not (pointer: fine)').matches;
             if (isMobile) {
@@ -1053,7 +1104,7 @@
         var overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
         overlay.style.display = 'flex';
-        overlay.innerHTML = '<div class="modal-dialog" style="max-width:420px;padding:20px 22px;">' +
+        overlay.innerHTML = '<div class="modal-dialog" style="max-width:min(90vw, 480px);padding:20px 22px;">' +
             '<h3>🔖 收藏语录</h3>' +
             '<div class="saved-quotes-list" style="max-height:60vh;overflow-y:auto;margin-top:12px;">' +
             (savedQuotes.length === 0

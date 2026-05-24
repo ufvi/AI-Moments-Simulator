@@ -51,13 +51,13 @@
         return _link(token);
     };
 
-    // 图片覆写：不安全图片退化为 Markdown 文本
+    // 图片覆写：不安全图片退化为 Markdown 文本；安全图片限制最大宽度
     var _image = renderer.image.bind(renderer);
     renderer.image = function (token) {
         if (!isSafeUrl(token.href)) {
             return '![' + (token.text || '') + '](' + token.href + ')';
         }
-        return _image(token);
+        return '<img src="' + token.href + '" alt="' + (token.text || '') + '" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;">';
     };
 
     // 代码块添加复制按钮
@@ -179,6 +179,23 @@
 
     window.App = window.App || {};
     window.App.parseMarkdown = parseMarkdown;
+
+    function parseMarkdownAI(text) {
+        if (!text || typeof text !== 'string') return '';
+        try {
+            var em = extractMath(text);
+            marked.setOptions({ breaks: false });
+            var result = marked.parse(em.text);
+            marked.setOptions({ breaks: true });
+            result = restoreMath(result, em.mathBlocks, em.mathInlines);
+            return result;
+        } catch (err) {
+            console.error('[Markdown] AI解析错误', err);
+            marked.setOptions({ breaks: true });
+            return escapeHtml(text);
+        }
+    }
+    window.App.parseMarkdownAI = parseMarkdownAI;
 
     // 代码块复制功能
     window.copyCode = function (btn) {

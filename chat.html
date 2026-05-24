@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 聊天 - Moments Chat</title>
+  <meta name="description" content="与 AI 畅聊你的朋友圈">
+  <link rel="preconnect" href="https://fonts.loli.net" crossorigin>
+  <link href="https://fonts.loli.net/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=2026052400">
+  <link rel="stylesheet" href="chat.css?v=2026052400">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css">
+  <script src="marked.umd.js?v=2026052400"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
+  <script src="markdown.js?v=2026052400"></script>
+  <script src="bilibili.js?v=2026052400"></script>
+  <script type="module" src="cloudflare.js?v=2026052400"></script>
+  <script src="db.js?v=2026052400"></script>
+  <script src="utils.js?v=2026052400"></script>
+  <script src="state.js?v=2026052400"></script>
+  <script src="chat.js?v=2026052400"></script>
+</head>
+
+<body>
+  <div class="chat-app-container">
+    <!-- 对话列表侧边栏 -->
+    <aside class="chat-sidebar" id="chatSidebar">
+      <div class="chat-sidebar-header">
+        <span class="chat-sidebar-title">💬 对话列表</span>
+        <button class="chat-sidebar-close-btn" id="chatSidebarCloseBtn" title="收起">✕</button>
+        <button class="chat-sidebar-new-btn" id="chatNewConvBtn" title="新建对话">＋</button>
+      </div>
+      <div class="chat-conv-list" id="chatConvList">
+        <div class="chat-conv-empty">暂无对话，点击 ＋ 开始</div>
+      </div>
+      <div class="chat-sidebar-footer">
+        <a href="index.html" class="chat-back-link" id="chatBackLink">← 返回朋友圈</a>
+      </div>
+    </aside>
+
+    <!-- 主聊天区域 -->
+    <main class="chat-main">
+      <header class="chat-header">
+        <div class="chat-header-left">
+          <button class="chat-toggle-sidebar-btn" id="chatToggleSidebarBtn" title="对话列表">☰</button>
+          <span class="chat-header-title" id="chatHeaderTitle">AI 聊天</span>
+        </div>
+        <div class="chat-header-right">
+          <button class="chat-header-btn" id="chatPersonaBtn" title="人设配置">⚙️</button>
+        </div>
+      </header>
+
+      <div class="chat-messages" id="chatMessages">
+        <div class="chat-welcome" id="chatWelcome">
+          <div class="chat-welcome-icon">🤖</div>
+          <h2>你好，我是你的 AI 聊天助手</h2>
+          <p>我能够读取你的朋友圈，了解你的生活和想法。<br>随便聊聊吧，比如问我"最近过得怎么样？"</p>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-wrapper">
+          <textarea class="chat-input" id="chatInput" placeholder="输入消息... (Enter 发送，Shift+Enter 换行)" rows="1" maxlength="20000"></textarea>
+          <button class="chat-send-btn" id="chatSendBtn" title="发送" disabled>➤</button>
+        </div>
+        <div class="chat-input-hint">
+          <span class="chat-generating-hint" id="chatGeneratingHint" style="display:none;">AI 正在思考中<span class="chat-thinking-dots"></span></span>
+          <span class="chat-char-count" id="chatCharCount">0/20000</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- 人设配置面板 -->
+    <aside class="chat-persona-panel" id="chatPersonaPanel" style="display:none;">
+      <div class="chat-persona-header">
+        <span class="chat-persona-title">人设配置</span>
+        <button class="chat-persona-close-btn" id="chatPersonaCloseBtn">✕</button>
+      </div>
+      <div class="chat-persona-body">
+        <div class="chat-persona-section">
+          <label class="chat-persona-label">API 方案</label>
+          <select class="chat-persona-select" id="chatPresetSelect">
+          </select>
+        </div>
+        <div class="chat-persona-section">
+          <label class="chat-persona-label">人设描述</label>
+          <textarea class="chat-persona-textarea" id="chatPersonaTextarea" placeholder="描述 AI 的性格、语气、风格...&#10;&#10;例如：你是一个温柔知心的大姐姐，说话亲切温暖，善于倾听和共情..." maxlength="5000"></textarea>
+          <div class="chat-persona-hint">描述 AI 助手的人设性格，留空则使用默认人设</div>
+        </div>
+        <div class="chat-persona-section">
+          <label class="chat-persona-label">系统提示词预览</label>
+          <div class="chat-persona-preview" id="chatPersonaPreview"></div>
+        </div>
+      </div>
+      <div class="chat-persona-footer">
+        <button class="chat-persona-save-btn" id="chatPersonaSaveBtn">保存</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 手机端侧边栏遮罩 -->
+  <div class="chat-sidebar-overlay" id="chatSidebarOverlay" style="display:none;"></div>
+
+  <!-- Toast -->
+  <div class="chat-toast" id="chatToast" style="display:none;"></div>
+</body>
+
+</html>

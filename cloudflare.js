@@ -206,6 +206,36 @@ window._fbPullSavedQuotes = async function () {
 };
 
 // ════════════════════════════════════════════════════════════
+// 聊天记录（chat.html 用，存在 ${NAMESPACE}/chat/conversations 下）
+// ════════════════════════════════════════════════════════════
+
+window._fbChatSync = async function (conversations) {
+    try {
+        if (window._onLocalSync) window._onLocalSync();
+        await set(ref(db, `${NAMESPACE}/chat/conversations`), cleanForFirebase(conversations));
+        console.log('💬 聊天记录已同步', new Date().toLocaleTimeString());
+        return true;
+    } catch (e) {
+        console.warn('聊天记录同步失败:', e);
+        return false;
+    }
+};
+
+window._fbChatLoad = async function () {
+    try {
+        const snap = await get(ref(db, `${NAMESPACE}/chat/conversations`));
+        if (snap.exists()) {
+            console.log('☁️ 聊天记录已拉取');
+            return snap.val();
+        }
+        return [];
+    } catch (e) {
+        console.warn('聊天记录拉取失败:', e);
+        return [];
+    }
+};
+
+// ════════════════════════════════════════════════════════════
 // 评论（主页面用，存在 ${NAMESPACE}/comments 下）
 // ════════════════════════════════════════════════════════════
 

@@ -862,6 +862,9 @@
                     case 'upload-cloud':
                         manualUploadToCloud();
                         break;
+                    case 'chat':
+                        window.open('chat.html' + (window.App.namespaceName ? '?ns=' + encodeURIComponent(window.App.namespaceName) : ''), '_self');
+                        break;
                     case 'navigate':
                         window.open('navigate.html', '_blank');
                         break;
@@ -934,6 +937,9 @@
                         break;
                     case 'upload-cloud':
                         manualUploadToCloud();
+                        break;
+                    case 'chat':
+                        window.open('chat.html' + (window.App.namespaceName ? '?ns=' + encodeURIComponent(window.App.namespaceName) : ''), '_self');
                         break;
                     case 'navigate':
                         window.open('navigate.html', '_blank');
@@ -1050,6 +1056,32 @@
                 window.App.updatePublishBtn();
                 this.value = '';
             };
+        }
+
+        // 输入框粘贴图片
+        var publishText = $('#publishText');
+        if (publishText) {
+            publishText.addEventListener('paste', function (e) {
+                var items = e.clipboardData && e.clipboardData.items;
+                if (!items) return;
+                var MAX_IMAGES = 50;
+                var hasImage = false;
+                for (var i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image/') === 0) {
+                        e.preventDefault();
+                        var file = items[i].getAsFile();
+                        if (!file) continue;
+                        if (window.App.publishFiles.filter(function (m) { return m.type === 'image'; }).length >= MAX_IMAGES) {
+                            window.App.showToast('最多' + MAX_IMAGES + '图片'); break;
+                        }
+                        window.App.publishFiles.push({ type: 'image', file: file, previewUrl: URL.createObjectURL(file) });
+                        window.App.renderPublishPreview();
+                        window.App.updatePublishBtn();
+                        hasImage = true;
+                    }
+                }
+                if (hasImage) window.App.showToast('📋 已粘贴图片');
+            });
         }
 
         var imageModalClose = $('#imageModalClose');
@@ -1176,6 +1208,8 @@
             if (e.key === 'ArrowRight') window.App.navImage(1);
         }
     });
+
+    var _isLoadingMore = false; // scroll loading 锁，防止并发
 
     window.addEventListener('scroll', function () {
         if (window.App.searchActive) return;
