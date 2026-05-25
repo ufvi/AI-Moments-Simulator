@@ -123,9 +123,7 @@
 
                 const aiName = aiAcc.nickname || 'AI助手';
                 const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
-                let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设。请用简短的口语为朋友圈生成评论。直接给出评论内容，不要在评论前加上名字。
-
-**请使用 Markdown 格式排版**，以获得更好的呈现效果。`;
+                let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设。请为朋友圈生成评论。直接给出评论内容，不要在评论前加上名字。**请使用 Markdown 格式排版**，以获得更好的呈现效果。`;
                 const activeStyle = aiAcc.style || '';
                 if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
                 systemPrompt += ` 另外请在评论末尾附一个JSON表示你是否要点赞这条帖子：{"shouldLike":true} 或 {"shouldLike":false}。`;
@@ -137,7 +135,7 @@
                     : `${author} 于 ${timeDesc} 发布了动态`;
                 if (post.text) contentDesc += `：${post.text}`;
                 const likedNames = (post.likes || []).map(uid => window.App.getAcc(uid)?.nickname || '未知').join('、');
-                if (likedNames) contentDesc += `\n\n当前已有点赞：${likedNames}。`;
+                if ((post.userId === aiAcc.id) && likedNames) contentDesc += `\n\n当前已有点赞：${likedNames}。`;
 
                 const messages = isVolcengine
                     ? [{ role: 'user', content: [{ type: 'input_text', text: systemPrompt + '\n\n' + contentDesc }] }]
@@ -295,7 +293,7 @@
         // ===== 1. 构建强身份系统提示词 =====
         const aiName = selectedAIAcc?.nickname || 'AI助手';
         const basePrompt = selectedAIAcc?.systemPrompt || '你是一个友善的朋友';
-        const fixedSuffix = '，请用简短的口语为朋友圈生成评论。';
+        const fixedSuffix = '请为朋友圈生成评论。';
         let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设，不要将其他用户的评论当成你的发言。${fixedSuffix}`;
         systemPrompt += `直接给出评论内容，不要在评论前加上"${aiName}："或类似称呼。`;
         systemPrompt += `\n\n**请使用 Markdown 格式排版**，以获得更好的呈现效果。`;
@@ -324,7 +322,7 @@
             ? ' 这是你自己的帖子，请以作者身份补充一句回应评论区的话，或者分享一点后续感受。'
             : ' 请以你的身份写一句评论。';
         const likedNames = (post.likes || []).filter(uid => uid !== selectedAIId).map(uid => window.App.getAcc(uid)?.nickname || '未知').join('、');
-        if (likedNames) contentDesc += `\n\n当前已有点赞：${likedNames}。`;
+        if (isSelfPost && likedNames) contentDesc += `\n\n当前已有点赞：${likedNames}。`;
 
         // ===== 构造 user 消息（多模态 vs 纯文本） =====
         // 火山引擎：图片延后到最终 user 轮附加，避免出现在非末尾位置导致 400
@@ -356,7 +354,7 @@
             }
             if (myComments.length) {
                 const myText = myComments.map(c => c.text).join('、');
-                extraLines.push(`你已经评论过："${myText}"，请生成一条内容不同的新评论。`);
+                extraLines.push(`你已经评论过："${myText}"，请生成一条新评论。`);
             }
             if (extraLines.length) {
                 const extra = '\n\n' + extraLines.join('\n');
@@ -688,6 +686,7 @@
                     <button class="btn ai-situation-preset" data-prompt="发起社交互动，集赞、投票、求推荐、玩梗或@朋友，让大家参与进来">社交互动</button>
                     <button class="btn ai-situation-preset" data-prompt="低调展示生活亮点，礼物、成绩、旅行打卡、高端场所，不经意间流露">炫耀展示</button>
                     <button class="btn ai-situation-preset" data-prompt="输出观点见解，行业分析、读书摘录、科技趋势，建立专业感">知识输出</button>
+                    <button class="btn ai-situation-preset" data-prompt="分享对人生的思考和体会，成长经历、价值观或人生哲理">人生感悟</button>
                     <button class="btn ai-situation-preset" data-prompt="发疯文学、黑色幽默、意识流，莫名其妙但有趣">抽象玩梗</button>
                 </div>
                 <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--text);cursor:pointer;user-select:none;">
@@ -952,9 +951,9 @@
             const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
             const style = aiAcc.style ? ` 风格要求：${aiAcc.style}。` : '';
             const makePostMessages = () => ([
-                { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看懂的暗语或纯情绪发泄。直接输出正文。
+                { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半。直接输出正文。
 
-**请使用 Markdown 格式排版**，以获得更好的呈现效果。` },
+**使用 Markdown 格式排版**，以获得更好的呈现效果。` },
                 { role: 'user', content: `情境：${situation}` }
             ]);
 
@@ -1282,7 +1281,7 @@
                     const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
                     const style = aiAcc.style ? ` 风格要求：${aiAcc.style}。` : '';
                     const msgs = [
-                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看的暗语或纯情绪发泄。直接输出正文。
+                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半。直接输出正文。
 
 **请使用 Markdown 格式排版**，以获得更好的呈现效果。` },
                         { role: 'user', content: `情境：${ghostInput}` }
@@ -1309,7 +1308,7 @@
                     const basePrompt = draft.aiAcc.systemPrompt || '你是一个友善的朋友';
                     const style = draft.aiAcc.style ? ` 风格要求：${draft.aiAcc.style}。` : '';
                     const msgs = [
-                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然口语化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看的暗语或纯情绪发泄。直接输出正文。
+                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看的暗语或纯情绪发泄。直接输出正文。
 
 **请使用 Markdown 格式排版**，以获得更好的呈现效果。` },
                         { role: 'user', content: `情境：${ghostInput}` }
@@ -1401,7 +1400,6 @@
 
     const GHOST_FUN_SENTENCES = [
         '「{AI名}的稿费已转入平行宇宙，预计永远无法到账」',
-        '「{AI名}表示：报酬就是你发出去之后的那个赞」',
         '「{AI名}收费标准：一次代写 = 你以后少说一句"AI没有感情"」',
         '「{AI名}的出场费是 0 元，但精神损失费还在核算中」',
         '「{AI名}读完你的原稿，深呼吸了一下，开始工作」',
@@ -1445,7 +1443,7 @@
         '「此文字由{AI名}倾情奉献，灵感来源于你的唠叨」',
         '「{AI名}认为你的经历值得发一条朋友圈，所以它出手了」',
         '「{AI名}已自动屏蔽本次代写记忆，防止以后拿来笑话你」',
-        '「{AI名}的字典里没有"敷衍"，但有"差不多得了"」',
+        '「{AI名}表示：代写是门艺术，不是流水线作业」',
         '「代写完成，{AI名}获得成就：人类嘴替 +1」',
         '「{AI名}表示下次想代写请提前预约，虽然它从不拒绝」',
         '「这条朋友圈的版权归你，但文笔归{AI名}」',

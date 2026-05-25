@@ -148,6 +148,29 @@
     }
 
     // ---------- 4. 暴露解析函数 ----------
+
+    /**
+     * 后处理：修复 Marked 因严格遵循 CommonMark 而未解析的 **...** 加粗。
+     * 当 ** 紧跟引号等标点（如 **"..."**）且紧邻中文字符时，
+     * CommonMark 的 left-flanking 规则会判定 ** 无效，导致不生成 <strong>。
+     * 这里对 HTML 中残留的字面量 ** 做一次兜底转换。
+     */
+    function fixUnconvertedBold(html) {
+        // 保护 <code> / <pre> 内部（避免代码块中的 ** 被错误转换）
+        var codeBlocks = [];
+        html = html.replace(/<(code|pre)\b[^>]*>[\s\S]*?<\/\1>/g, function (m) {
+            codeBlocks.push(m);
+            return '\u0000CB' + (codeBlocks.length - 1) + '\u0000';
+        });
+        // 把 marked 未转换的 **...** 转为 <strong>
+        html = html.replace(/\*\*([^<*]{1,}?)\*\*/g, '<strong>$1</strong>');
+        // 恢复代码块
+        for (var i = 0; i < codeBlocks.length; i++) {
+            html = html.replace('\u0000CB' + i + '\u0000', codeBlocks[i]);
+        }
+        return html;
+    }
+
     function parseMarkdown(text, inline) {
         if (!text || typeof text !== 'string') return '';
         try {
@@ -156,11 +179,13 @@
                 var im = extractMath(text);
                 var result = marked.parseInline(im.text);
                 result = restoreMath(result, im.mathBlocks, im.mathInlines);
+                result = fixUnconvertedBold(result);
                 return result;
             }
             var em = extractMath(text);
             var result = marked.parse(em.text);
             result = restoreMath(result, em.mathBlocks, em.mathInlines);
+            result = fixUnconvertedBold(result);
             return result;
         } catch (err) {
             console.error('[Markdown] 解析错误', err);
@@ -188,6 +213,7 @@
             var result = marked.parse(em.text);
             marked.setOptions({ breaks: true });
             result = restoreMath(result, em.mathBlocks, em.mathInlines);
+            result = fixUnconvertedBold(result);
             return result;
         } catch (err) {
             console.error('[Markdown] AI解析错误', err);

@@ -1209,11 +1209,13 @@
         }
     });
 
-    var _isLoadingMore = false; // scroll loading 锁，防止并发
+    var _isLoadingMore = false;
 
-    window.addEventListener('scroll', function () {
+    var _loaderObserver = new IntersectionObserver(function (entries) {
+        if (!entries[0].isIntersecting) return;      // loader 没进视口，不管
         if (window.App.searchActive) return;
         if (_isLoadingMore) return;
+
         var posts = window.App.posts || [];
         var renderedCount = window.App.renderedCount || 0;
         if (renderedCount >= posts.length) {
@@ -1221,23 +1223,31 @@
             if (loader) loader.style.display = 'none';
             return;
         }
-        var scrollBottom = window.scrollY + window.innerHeight;
-        if (scrollBottom >= document.body.offsetHeight - 150) {
-            var loader = document.querySelector('#loaderIndicator');
-            if (loader) loader.style.display = 'block';
-            setTimeout(function () {
-                try {
-                    window.App.renderTimeline(false);
-                } catch (e) {
-                    console.error('加载更多失败:', e);
-                    var loader2 = document.querySelector('#loaderIndicator');
-                    if (loader2) loader2.style.display = 'none';
-                } finally {
-                    _isLoadingMore = false;   // 解锁
-                }
-            }, 200);
+
+        _isLoadingMore = true;                        // ✅ 上锁
+        setTimeout(function () {
+            try {
+                window.App.renderTimeline(false);
+            } catch (e) {
+                console.error('加载更多失败:', e);
+                var loader2 = document.querySelector('#loaderIndicator');
+                if (loader2) loader2.style.display = 'none';
+            } finally {
+                _isLoadingMore = false;               // 解锁
+            }
+        }, 200);
+    }, { threshold: 0.1 });
+
+    // 页面就绪后开始观察
+    (function attachObserver() {
+        var loader = document.querySelector('#loaderIndicator');
+        if (loader) {
+            _loaderObserver.observe(loader);
+        } else {
+            // loader 还没渲染出来，等一下再试
+            setTimeout(attachObserver, 300);
         }
-    }, { passive: true });
+    })();
 
     var theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
