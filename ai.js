@@ -123,7 +123,7 @@
 
                 const aiName = aiAcc.nickname || 'AI助手';
                 const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
-                let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设。请为朋友圈生成评论。直接给出评论内容，不要在评论前加上名字。**请使用 Markdown 格式排版**，以获得更好的呈现效果。`;
+                let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设。请为朋友圈生成一条简短的评论。直接给出评论内容，不要在评论前加上名字。**请使用 Markdown 格式排版**，以获得更好的呈现效果。`;
                 const activeStyle = aiAcc.style || '';
                 if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
                 systemPrompt += ` 另外请在评论末尾附一个JSON表示你是否要点赞这条帖子：{"shouldLike":true} 或 {"shouldLike":false}。`;
@@ -293,7 +293,7 @@
         // ===== 1. 构建强身份系统提示词 =====
         const aiName = selectedAIAcc?.nickname || 'AI助手';
         const basePrompt = selectedAIAcc?.systemPrompt || '你是一个友善的朋友';
-        const fixedSuffix = '请为朋友圈生成评论。';
+        const fixedSuffix = '请为朋友圈生成一条简短的评论。';
         let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设，不要将其他用户的评论当成你的发言。${fixedSuffix}`;
         systemPrompt += `直接给出评论内容，不要在评论前加上"${aiName}："或类似称呼。`;
         systemPrompt += `\n\n**请使用 Markdown 格式排版**，以获得更好的呈现效果。`;
@@ -320,7 +320,7 @@
         }
         contentDesc += isSelfPost
             ? ' 这是你自己的帖子，请以作者身份补充一句回应评论区的话，或者分享一点后续感受。'
-            : ' 请以你的身份写一句评论。';
+            : ' 请以你的身份写一条简短的评论。';
         const likedNames = (post.likes || []).filter(uid => uid !== selectedAIId).map(uid => window.App.getAcc(uid)?.nickname || '未知').join('、');
         if (isSelfPost && likedNames) contentDesc += `\n\n当前已有点赞：${likedNames}。`;
 
