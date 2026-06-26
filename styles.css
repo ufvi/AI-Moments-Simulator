@@ -976,8 +976,12 @@ strong, b {
 }
 .post-text p,
 .comment-content p {
-    margin: 0;
+    margin: 0 0 14px 0;
     white-space: normal;
+}
+.post-text p:last-child,
+.comment-content p:last-child {
+    margin-bottom: 0;
 }
 
 .post-images-grid {

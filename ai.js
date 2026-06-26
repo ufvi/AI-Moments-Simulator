@@ -89,6 +89,14 @@
         document.body.appendChild(overlay);
 
         const textarea = overlay.querySelector('#aiCommentModalText-' + postId);
+        // 自动调整高度，适配内容
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+        textarea.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+        });
+
         const regenBtn = overlay.querySelector('#aiCommentModalRegen-' + postId);
         const cancelBtn = overlay.querySelector('#aiCommentModalCancel-' + postId);
         const sendBtn = overlay.querySelector('#aiCommentModalSend-' + postId);
@@ -743,11 +751,13 @@
                     activePresetBtn.classList.remove('active');
                     activePresetBtn = null;
                     inp.value = '';
+                    delete inp.dataset.situationLabel;
                     return;
                 }
                 activePresetBtn = btn;
                 btn.classList.add('active');
                 inp.value = btn.dataset.prompt;
+                inp.dataset.situationLabel = btn.textContent.trim();
                 // 自动滚动到最底部让用户看到完整提示词
                 inp.scrollTop = inp.scrollHeight;
             };
@@ -759,6 +769,7 @@
                 activePresetBtn.classList.remove('active');
                 activePresetBtn = null;
             }
+            delete inp.dataset.situationLabel;
         });
 
         overlay.querySelector('#aiPostCancel').onclick = () => overlay.remove();
@@ -832,6 +843,7 @@
                     : data.choices?.[0]?.message?.content)?.trim();
                 if (!situation) throw new Error('未生成内容');
                 inp.value = situation;
+                delete inp.dataset.situationLabel;
             } catch (e) {
                 clearTimeout(tid);
                 if (e.name === 'AbortError') window.App.showToast('⏰ 请求超时');
@@ -847,14 +859,15 @@
             const chosenId = accountSelect.value;
             const chosenAcc = window.App.getAcc(chosenId) || selectedAIAcc;
             const personalized = personalizedChk.checked;
+            const situationLabel = inp.dataset.situationLabel || '';
             overlay.style.display = 'none';
             await generateAIPost(chosenAcc, theme, selectedCount, personalized, () => {
                 overlay.style.display = 'flex';
-            });
+            }, situationLabel);
         };
     }
 
-    async function generateAIPost(aiAcc, theme, count = 1, personalized = true, onBack) {
+    async function generateAIPost(aiAcc, theme, count = 1, personalized = true, onBack, situationLabel) {
         if (!window.App.aiConfig.endpoint || !window.App.aiConfig.model) return;
 
         const $thinkingBar = $('#aiThinkingBar');
@@ -972,7 +985,7 @@
                 '🎨 选择一个版本',
                 `以 <b>${window.App.escapeHtml(aiAcc.nickname)}</b> 身份发帖，选你最满意的`,
                 asDrafts,
-                (d) => publishAIPost(aiAcc, d.text),
+                (d) => publishAIPost(aiAcc, d.text, situation, situationLabel),
                 (d) => prefillPublishBox(aiAcc, d.text),
                 async (draft) => {
                     const newText = await callAPI(makePostMessages(), 2000);
@@ -1101,13 +1114,15 @@
         overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     }
 
-    function publishAIPost(aiAcc, postText) {
+    function publishAIPost(aiAcc, postText, situationPrompt, situationLabel) {
         const newPost = {
             id: 'post_ai_' + Date.now(),
             userId: aiAcc.id,
             text: postText,
             images: [], videos: [], likes: [], comments: [],
-            timestamp: Date.now(), pinned: false
+            timestamp: Date.now(), pinned: false,
+            situationPrompt: situationPrompt || null,
+            situationLabel: situationLabel || null
         };
         window.App.posts.unshift(newPost);
         window.App.savePosts();
@@ -1398,6 +1413,19 @@
         window.App.showToast('✏️ 修改满意后点击发布，将以AI身份发出');
     }
 
+    const SITUATION_FUN_SENTENCES = [
+        '「{AI名}：这个情境的含金量还在上升」',
+        '「{AI名}对着这个情境沉思了 0.2 秒，然后决定整活」',
+        '「情境审核委员会已全票通过，{AI名}鼓掌👏」',
+        '「{AI名}表示：这个情境很有画面感，已脑补完毕」',
+        '「情境已加入{AI名}的精选集，含推荐值 ★★★★★」',
+        '「{AI名}读完情境后露出了满意的电子微笑」',
+        '「这条帖子 80% 靠情境，20% 靠{AI名}硬编」',
+        '「{AI名}已根据此情境生成了一条朋友圈，并顺手点了个赞」',
+        '「该情境已被{AI名}收录到『人类迷惑日常』档案」',
+        '「{AI名}说：你负责提供情境，我负责让它看起来像真事」',
+    ];
+
     const GHOST_FUN_SENTENCES = [
         '「{AI名}的稿费已转入平行宇宙，预计永远无法到账」',
         '「{AI名}收费标准：一次代写 = 你以后少说一句"AI没有感情"」',
@@ -1554,7 +1582,39 @@
         }
     }
 
+    window.App.showSituationInfo = function(postId) {
+        var post = window.App.posts.find(function(p) { return p.id === postId; });
+        if (!post || !post.situationPrompt) return;
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.display = 'flex';
+        var sitAiAcc = window.App.getAcc(post.userId);
+        var sitAiName = window.App.escapeHtml(sitAiAcc?.nickname || 'AI');
+        var sitIdx = Math.floor(Math.random() * SITUATION_FUN_SENTENCES.length);
+        var sitFunLine = SITUATION_FUN_SENTENCES[sitIdx].replace(/\{AI名\}/g, sitAiName);
+
+        overlay.innerHTML = [
+            '<div class="modal-dialog" style="max-width:min(90vw, 480px);">',
+            '    <h3>💬 生成情境</h3>',
+            '    <p style="font-size:12px;color:var(--text-light);margin:0 0 6px;">AI 发帖时参考的输入情境</p>',
+            '    <p style="font-size:12px;color:var(--accent);margin:0 0 10px;font-style:italic;">' + window.App.escapeHtml(sitFunLine) + '</p>',
+            '    <div style="background:var(--input-bg);border-radius:10px;padding:10px 12px;',
+            '                font-size:14px;line-height:1.6;color:var(--text);white-space:pre-wrap;',
+            '                overflow:hidden;word-break:break-word;">',
+            window.App.escapeHtml(post.situationPrompt),
+            '    </div>',
+            '    <div class="btn-row" style="margin-top:14px;">',
+            '        <button class="btn btn-save" id="situationInfoClose">关闭</button>',
+            '    </div>',
+            '</div>'
+        ].join('');
+        document.body.appendChild(overlay);
+        overlay.querySelector('#situationInfoClose').onclick = function() { overlay.remove(); };
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    };
+
     window.App = window.App || {};
+    window.App.showSituationInfo = window.App.showSituationInfo;
     window.App.ensureAIAccount = ensureAIAccount;
     window.App.submitAIComment = submitAIComment;
     window.App.publishAIComment = publishAIComment;

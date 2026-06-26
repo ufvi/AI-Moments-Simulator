@@ -11,6 +11,11 @@
         gfm: true
     });
 
+    // ---------- 换行模式 ----------
+    // false = 单 \n 留在同一段，空行 \n\n 才分段（CommonMark 标准）
+    // true  = 单 \n 就切段落，连续空行中多的 \n 产生 <br>
+    var legacyNewline = false;
+
     // ---------- 1. 自定义剧透语法 ||...|| ----------
     var spoilerExt = {
         name: 'spoiler',
@@ -58,6 +63,13 @@
             return '![' + (token.text || '') + '](' + token.href + ')';
         }
         return '<img src="' + token.href + '" alt="' + (token.text || '') + '" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;">';
+    };
+
+    // 换行模式：单 \n 不切段时不需要额外的 <br>
+    var _space = renderer.space.bind(renderer);
+    renderer.space = function (token) {
+        if (window.__nl) return '';          // 空行间距由 <p> 标签自然产生
+        return _space(token);                 // 单 \n 切段落时，多余 \n 输出 <br>
     };
 
     // 代码块添加复制按钮
@@ -171,8 +183,10 @@
         return html;
     }
 
-    function parseMarkdown(text, inline) {
+    function parseMarkdown(text, inline, ln) {
         if (!text || typeof text !== 'string') return '';
+        var useNewline = ln !== undefined ? ln : legacyNewline;
+        if (!useNewline) window.__nl = 1;  // 设置标志：单 \n 不切段落
         try {
             if (inline) {
                 // 行内模式只需处理行内公式
@@ -190,6 +204,8 @@
         } catch (err) {
             console.error('[Markdown] 解析错误', err);
             return escapeHtml(text).replace(/\n/g, '<br>');
+        } finally {
+            delete window.__nl;
         }
     }
 
@@ -205,20 +221,21 @@
     window.App = window.App || {};
     window.App.parseMarkdown = parseMarkdown;
 
-    function parseMarkdownAI(text) {
+    function parseMarkdownAI(text, ln) {
         if (!text || typeof text !== 'string') return '';
+        var useNewline = ln !== undefined ? ln : legacyNewline;
+        if (!useNewline) window.__nl = 1;  // 设置标志：单 \n 不切段落
         try {
             var em = extractMath(text);
-            marked.setOptions({ breaks: false });
             var result = marked.parse(em.text);
-            marked.setOptions({ breaks: true });
             result = restoreMath(result, em.mathBlocks, em.mathInlines);
             result = fixUnconvertedBold(result);
             return result;
         } catch (err) {
             console.error('[Markdown] AI解析错误', err);
-            marked.setOptions({ breaks: true });
             return escapeHtml(text);
+        } finally {
+            delete window.__nl;
         }
     }
     window.App.parseMarkdownAI = parseMarkdownAI;

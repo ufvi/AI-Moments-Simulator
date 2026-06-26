@@ -408,7 +408,7 @@ html, body {
 
 /* ── Markdown in chat bubbles ── */
 .chat-markdown-body p {
-    margin: 0 0 6px 0;
+    margin: 0 0 14px 0;
 }
 .chat-markdown-body p:last-child {
     margin-bottom: 0;
@@ -701,7 +701,7 @@ html, body {
     position: relative;
 }
 .chat-live-text-bubble .chat-live-text-content p {
-    margin: 0 0 6px 0;
+    margin: 0 0 14px 0;
 }
 .chat-live-text-bubble .chat-live-text-content p:last-child {
     margin-bottom: 0;

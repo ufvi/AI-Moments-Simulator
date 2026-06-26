@@ -557,6 +557,13 @@
             ghostTagHtml = `<span style="font-size:11px;color:var(--ai-purple);margin-left:6px;background:var(--ai-purple-light,rgba(124,92,252,0.08));border:1px solid rgba(124,92,252,0.2);border-radius:10px;padding:2px 8px;cursor:pointer;font-weight:600;" onclick="window.App.showGhostInfo('${post.id}')">✍️ ${window.App.escapeHtml(ghostAcc?.nickname || 'AI')}代笔</span>`;
         }
 
+        // Situation prompt tag (AI 发帖时的输入情境)
+        let situationTagHtml = '';
+        if (post.situationPrompt) {
+            var sitLabel = post.situationLabel || '情境';
+            situationTagHtml = `<span style="font-size:11px;color:var(--accent);margin-left:6px;background:var(--accent-light,rgba(0,150,255,0.08));border:1px solid rgba(0,150,255,0.2);border-radius:10px;padding:2px 8px;cursor:pointer;font-weight:600;" onclick="window.App.showSituationInfo('${post.id}')">💬 ${window.App.escapeHtml(sitLabel)}</span>`;
+        }
+
         // SVG icons
         const heartFilled = `<svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
         const heartOutline = `<svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
@@ -566,7 +573,7 @@
         const likesBadge = likeCnt ? `<div class="post-likes-bar"><span class="likes-heart">♥</span><span class="likes-names">${post.likes.map(uid => window.App.getAcc(uid)?.nickname || '未知').slice(0, 8).join('、')}${likeCnt > 8 ? ' 等 ' + likeCnt + ' 人' : ''}</span></div>` : '';
 
         return `<div class="post-card${post.pinned ? ' pinned-card' : ''}" id="post-${post.id}">${post.pinned ? '<div class="pin-badge">📌 置顶</div>' : ''}
-        <div class="post-header">${avatarHtml}<div class="post-user-info"><div class="post-nickname">${window.App.escapeHtml(author.nickname)}${window.App.getBadgeHtml(author)}</div><div class="post-time">${window.App.formatTime(post.timestamp)}</div>${ghostTagHtml}</div><button class="post-menu-btn" data-action="toggle-menu" data-post-id="${post.id}" title="更多操作">${menuDotsIcon}</button><div class="post-menu-dropdown" id="postMenu-${post.id}" style="display:none;"><button data-action="edit-post" data-post-id="${post.id}">✏️ 编辑</button><button data-action="toggle-pin" data-post-id="${post.id}">${post.pinned ? '📌 取消置顶' : '📌 置顶'}</button><button data-action="share-post" data-post-id="${post.id}">📤 导出这条</button><button data-action="share-link" data-post-id="${post.id}">🔗 链接分享</button><button data-action="copy-post" data-post-id="${post.id}">📋 复制文字</button><button data-action="delete-post" data-post-id="${post.id}" class="danger">🗑️ 删除</button></div></div>
+        <div class="post-header">${avatarHtml}<div class="post-user-info"><div class="post-nickname">${window.App.escapeHtml(author.nickname)}${window.App.getBadgeHtml(author)}</div><div class="post-time">${window.App.formatTime(post.timestamp)}</div>${situationTagHtml}${ghostTagHtml}</div><button class="post-menu-btn" data-action="toggle-menu" data-post-id="${post.id}" title="更多操作">${menuDotsIcon}</button><div class="post-menu-dropdown" id="postMenu-${post.id}" style="display:none;"><button data-action="edit-post" data-post-id="${post.id}">✏️ 编辑</button><button data-action="toggle-pin" data-post-id="${post.id}">${post.pinned ? '📌 取消置顶' : '📌 置顶'}</button><button data-action="share-post" data-post-id="${post.id}">📤 导出这条</button><button data-action="share-link" data-post-id="${post.id}">🔗 链接分享</button><button data-action="copy-post" data-post-id="${post.id}">📋 复制文字</button><button data-action="delete-post" data-post-id="${post.id}" class="danger">🗑️ 删除</button></div></div>
         ${post.text ? `<div class="post-text">${window.App.parseMarkdown(post.text)}</div>` : ''}
         ${mediaHtml}
         <div class="post-actions"><button class="action-btn${isLiked ? ' liked' : ''}" data-action="like" data-post-id="${post.id}">${isLiked ? heartFilled : heartOutline}${likeCnt ? ' ' + likeCnt : ' 点赞'}</button><button class="action-btn btn-comment" data-action="focus-comment" data-post-id="${post.id}">${chatIcon}${cmtCnt ? ' ' + cmtCnt : ' 评论'}</button></div>

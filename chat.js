@@ -803,8 +803,6 @@
 
     function renderAssistantMessage(msg, conv, index, total, mergedThinking) {
         var content = (msg.content || '').trim();
-        var paragraphs = content.split(/\n\s*\n/);
-        content = paragraphs.map(function (p) { return p.trim().replace(/\n+/g, ' '); }).join('\n');
         var renderedContent;
         try {
             renderedContent = window.App.parseMarkdownAI ? window.App.parseMarkdownAI(content) : window.App.parseMarkdown(content);
