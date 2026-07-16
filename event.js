@@ -452,10 +452,6 @@
                 nickname: author.nickname,
                 isAI: !!author.isAI
             },
-            likes: post.likes.map(function (uid) {
-                var u = window.App.getAcc(uid) || { nickname: '未知' };
-                return { nickname: u.nickname, isAI: !!u.isAI };
-            }),
             comments: post.comments.map(function (c) {
                 var cu = window.App.getAcc(c.userId) || { nickname: '未知' };
                 return {
