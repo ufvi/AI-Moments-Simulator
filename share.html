@@ -63,9 +63,9 @@
     }
 
     .container {
-      max-width: 640px;
+      max-width: 960px;
       margin: 0 auto;
-      padding: 24px 16px 0;
+      padding: 24px 4px 0;
     }
 
     /* ── 状态 ── */
@@ -234,7 +234,7 @@
 
     /* 正文 */
     .post-text {
-      padding: 0 18px 14px;
+      padding: 0 10px 14px;
       font-size: 15px;
       line-height: 1.75;
       overflow-x: hidden;
@@ -264,6 +264,10 @@
       grid-template-columns: 1fr 1fr;
     }
 
+    .media-grid.count-n {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+
     .media-grid img {
       width: 100%;
       aspect-ratio: 1;
@@ -281,12 +285,16 @@
 
     .media-videos {
       padding: 0 0 4px;
+      display: flex;
+      justify-content: center;
     }
 
     .media-videos video {
-      width: 100%;
+      width: auto;
+      max-height: 400px;
       display: block;
       background: #000;
+      border-radius: 8px;
     }
 
     /* ── 评论区 ── */
@@ -704,7 +712,7 @@
       transform: translateX(-50%) translateY(20px);
       background: rgba(44, 40, 37, 0.88);
       color: #fff;
-      padding: 10px 22px;
+      padding: 10px 14px;
       border-radius: 22px;
       font-size: 14px;
       font-weight: 400;
@@ -926,8 +934,8 @@
       // 图片网格
       let imgHtml = '';
       if (post.images && post.images.length > 0) {
-        const imgs = post.images.slice(0, 4);
-        const count = imgs.length;
+        const imgs = post.images;
+        const count = imgs.length > 4 ? 'n' : imgs.length;
         imgHtml = `<div class="media-grid count-${count}">
       ${imgs.map(id => `<img src="${escHtml(resolveMediaSrc(id))}" loading="lazy" data-url="${escHtml(resolveMediaSrc(id))}">`).join('')}
     </div>`;

@@ -371,8 +371,8 @@
 
         const textLen = (c.text || '').length;
         let bodyHtml;
-        if (isAI && textLen > 80) {
-            bodyHtml = `<span class="cb-truncated">${window.App.escapeHtml((c.text || '').slice(0, 80))}…</span>
+        if (isAI && textLen > 250) {
+            bodyHtml = `<span class="cb-truncated">${window.App.escapeHtml((c.text || '').slice(0, 250))}…</span>
                     <span class="cb-full">${window.App.parseMarkdown(c.text)}</span>
                     <span class="cb-toggle">展开</span>`;
         } else {

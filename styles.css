@@ -526,6 +526,20 @@ strong, b {
     box-shadow: 0 0 0 3px var(--input-focus);
 }
 
+.publish-area.drag-over {
+    outline: 3px dashed var(--accent);
+    outline-offset: -6px;
+    background: var(--accent-light);
+    border-radius: var(--radius);
+    transition: none;
+}
+.publish-area.drag-over textarea {
+    pointer-events: none;
+}
+.publish-area.drag-over .publish-toolbar {
+    pointer-events: none;
+    opacity: 0.5;
+}
 .publish-area {
     background: var(--card-bg);
     margin: 12px 12px;
@@ -1076,13 +1090,16 @@ strong, b {
     margin-top: 8px;
     border-radius: 4px;
     overflow: hidden;
-    background: #000;
+    background: transparent;
+    display: flex;
+    justify-content: center;
 }
 
 .post-video-wrapper video {
-    width: 100%;
+    max-width: 100%;
     max-height: 340px;
     display: block;
+    border-radius: 8px;
 }
 
 /* SVG 图标通用尺寸 */

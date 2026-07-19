@@ -1054,6 +1054,47 @@
             };
         }
 
+        // 输入框拖入图片/视频
+        var publishArea = document.querySelector('.publish-area');
+        if (publishArea) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function (ev) {
+                publishArea.addEventListener(ev, function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+            });
+            publishArea.addEventListener('dragenter', function () {
+                publishArea.classList.add('drag-over');
+            });
+            publishArea.addEventListener('dragleave', function (e) {
+                if (publishArea.contains(e.relatedTarget)) return;
+                publishArea.classList.remove('drag-over');
+            });
+            publishArea.addEventListener('drop', function (e) {
+                publishArea.classList.remove('drag-over');
+                var files = e.dataTransfer.files;
+                if (!files || !files.length) return;
+                var MAX_IMAGES = 50;
+                for (var i = 0; i < files.length; i++) {
+                    var f = files[i];
+                    if (f.type.indexOf('image/') === 0) {
+                        if (window.App.publishFiles.filter(function (m) { return m.type === 'image'; }).length >= MAX_IMAGES) {
+                            window.App.showToast('最多' + MAX_IMAGES + '图片'); break;
+                        }
+                        window.App.publishFiles.push({ type: 'image', file: f, previewUrl: URL.createObjectURL(f) });
+                    } else if (f.type.indexOf('video/') === 0) {
+                        if (window.App.publishFiles.some(function (m) { return m.type === 'video'; })) {
+                            window.App.showToast('已有视频'); continue;
+                        }
+                        window.App.publishFiles.push({ type: 'video', file: f, previewUrl: URL.createObjectURL(f) });
+                    }
+                }
+                window.App.renderPublishPreview();
+                window.App.updatePublishBtn();
+                window.App.showToast('📥 已拖入文件');
+            });
+        }
+
         // 输入框粘贴图片
         var publishText = $('#publishText');
         if (publishText) {
