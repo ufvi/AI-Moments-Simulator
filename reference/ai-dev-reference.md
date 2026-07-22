@@ -18,7 +18,8 @@ localStorage.getItem(window.App.KEY_AI_CONFIG)   // AI 配置 JSON
   model: "gpt-3.5-turbo",
   apiKey: "sk-...",                          // API Key（明文存储）
   timeout: 30,                               // 超时秒数
-  temperature: 0.8                           // 生成温度（可选）
+  temperature: 0.8,                          // 生成温度（可选）
+  thinking: false                            // 是否开启思考模式（深度推理）
 }
 ```
 
@@ -81,7 +82,9 @@ const response = await fetch(url, {
 
 ```js
 // OpenAI 格式
-const text = data.choices[0].message.content;
+const msg = data.choices[0].message;
+const text = msg.content;
+const reasoning = msg.reasoning_content;  // 思考模式下的推理内容
 
 // 火山引擎格式
 const text = data.output
@@ -89,7 +92,10 @@ const text = data.output
   .flatMap(o => o.content.filter(c => c.type === "output_text"))
   .map(c => c.text)
   .join("");
+const reasoning = data.output.find(o => o.type === "reasoning")?.content;
 ```
+
+`thinking` 配置控制请求中 `thinking: { type: 'enabled' }` 参数；DeepSeek V4 模型关闭 thinking 时显式传 `thinking: { type: 'disabled' }`。
 
 ---
 
@@ -103,8 +109,9 @@ const text = data.output
 - push 到 `post.comments[]`，`window.App.savePosts()`
 - 手术式更新评论区（`window.App.updateCommentsSection`）
 
-入口：`window.App.publishAIComment(postId, aiUserId, text)`
+入口：`window.App.publishAIComment(postId, aiUserId, text, reasoning)`
 - 直接以指定 AI 账号身份插入评论
+- `reasoning`（可选）：AI 思考过程的推理内容，存入评论对象的 `reasoning` 字段
 
 ### 2. AI 发帖（ai.js:994）
 

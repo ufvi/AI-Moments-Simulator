@@ -356,41 +356,49 @@
     function renderCommentItem(c, postId) {
         const cu = window.App.getAcc(c.userId) || { nickname: '未知', avatarBg: '#aaa' };
         const isAI = cu?.isAI;
+        const cmtId = c.id;
 
         // Build small avatar
-        let avHtml;
+        let avInner;
         if (cu.avatarText) {
             const isEmoji = window.App.isEmoji(cu.avatarText);
             const avFontSize = isEmoji ? '14px' : '11px';
-            avHtml = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:${avFontSize}">${window.App.escapeHtml(cu.avatarText)}</div>`;
+            avInner = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:${avFontSize}">${window.App.escapeHtml(cu.avatarText)}</div>`;
         } else if (cu.avatar && cu.avatar.startsWith('data:')) {
-            avHtml = `<img src="${cu.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.14);margin-top:1px;"><div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};display:none;">${cu.nickname?.charAt(0)?.toUpperCase() || '?'}</div>`;
+            avInner = `<img src="${cu.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.14);margin-top:1px;"><div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};display:none;">${cu.nickname?.charAt(0)?.toUpperCase() || '?'}</div>`;
         } else {
-            avHtml = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:11px">${cu.nickname?.charAt(0)?.toUpperCase() || '?'}</div>`;
+            avInner = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:11px">${cu.nickname?.charAt(0)?.toUpperCase() || '?'}</div>`;
         }
 
         const textLen = (c.text || '').length;
         let bodyHtml;
-        if (isAI && textLen > 250) {
-            bodyHtml = `<span class="cb-truncated">${window.App.escapeHtml((c.text || '').slice(0, 250))}…</span>
+        if (isAI && textLen > 300) {
+            bodyHtml = `<span class="cb-truncated">${window.App.escapeHtml((c.text || '').slice(0, 300))}…</span>
                     <span class="cb-full">${window.App.parseMarkdown(c.text)}</span>
                     <span class="cb-toggle">展开</span>`;
         } else {
             bodyHtml = window.App.parseMarkdown(c.text);
         }
 
+        const hasReasoning = isAI && c.reasoning;
+        const thinkingContentId = 'rt-' + postId + '-' + cmtId;
+
         return `<div class="comment-item${isAI ? ' ai-comment' : ''}">
-            ${avHtml}
+            <div class="comment-avatar-wrap">
+                ${avInner}
+                ${hasReasoning ? `<div class="thinking-dot" onclick="(function(el){var c=document.getElementById('${thinkingContentId}');if(c){c.style.display=c.style.display==='block'?'none':'block';}})(this)"></div>` : ''}
+            </div>
             <div class="comment-content">
                 <div class="comment-header">
                     <span class="comment-user">${window.App.escapeHtml(cu.nickname)}${window.App.getBadgeHtml(cu)}</span>
                     <span class="comment-time">${window.App.formatTime(c.timestamp)}</span>
                 </div>
                 <div class="comment-body ${isAI ? 'ai-comment-text' : ''}">${bodyHtml}</div>
+                ${hasReasoning ? `<div class="comment-thinking" id="${thinkingContentId}"><div class="comment-thinking-content">${window.App.escapeHtml(c.reasoning)}</div></div>` : ''}
             </div>
             <div class="comment-actions">
-                <button class="reply-btn" data-action="copy-comment" data-post-id="${postId}" data-comment-id="${c.id}">复制</button>
-                <button class="delete-comment-btn" data-action="delete-comment" data-post-id="${postId}" data-comment-id="${c.id}" title="删除">✕</button>
+                <button class="reply-btn" data-action="copy-comment" data-post-id="${postId}" data-comment-id="${cmtId}">复制</button>
+                <button class="delete-comment-btn" data-action="delete-comment" data-post-id="${postId}" data-comment-id="${cmtId}" title="删除">✕</button>
             </div>
         </div>`;
     }
@@ -942,11 +950,26 @@
     }
 
     function deleteComment(postId, commentId) {
-        const post = window.App.posts.find(p => p.id === postId);
-        if (!post) return;
-        post.comments = post.comments.filter(c => c.id !== commentId);
-        window.App.savePosts();
-        updateCommentsSection(postId);
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML =
+            '<div class="modal-dialog modal-dialog-sm">' +
+            '<h3 style="margin-bottom:8px;">删除评论</h3>' +
+            '<p style="text-align:center;font-size:14px;color:var(--text-light);margin:8px 0 16px;">确定删除这条评论吗？</p>' +
+            '<div class="btn-row" style="justify-content:center;gap:12px;">' +
+            '<button class="btn btn-cancel" id="cancelDelCmt">取消</button>' +
+            '<button class="btn btn-danger" id="confirmDelCmt">删除</button>' +
+            '</div></div>';
+        document.body.appendChild(overlay);
+        overlay.querySelector('#cancelDelCmt').onclick = () => overlay.remove();
+        overlay.querySelector('#confirmDelCmt').onclick = () => {
+            overlay.remove();
+            const post = window.App.posts.find(p => p.id === postId);
+            if (!post) return;
+            post.comments = post.comments.filter(c => c.id !== commentId);
+            window.App.savePosts();
+            updateCommentsSection(postId);
+        };
     }
 
     function toggleCommentCollapse(postId) {

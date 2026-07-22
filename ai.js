@@ -52,16 +52,18 @@
         window.App.showToast('🤖 AI 已评论');
     }
 
-    function publishAIComment(postId, aiUserId, text) {
+    function publishAIComment(postId, aiUserId, text, reasoning) {
         const post = window.App.posts.find(p => p.id === postId);
         if (!post) return;
-        post.comments.push({ id: 'cmt_ai_' + Date.now(), userId: aiUserId, text, timestamp: Date.now() });
+        const comment = { id: 'cmt_ai_' + Date.now(), userId: aiUserId, text, timestamp: Date.now() };
+        if (reasoning) comment.reasoning = reasoning;
+        post.comments.push(comment);
         window.App.savePosts();
         window.App.updateCommentsSection(postId);
         window.App.showToast('🤖 AI 已评论');
     }
 
-    function showAICommentModal(postId, aiAcc, reply) {
+    function showAICommentModal(postId, aiAcc, reply, reasoning) {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
         overlay.style.display = 'flex';
@@ -70,13 +72,17 @@
             ? `<img class="post-avatar" src="${window.App.escapeHtml(aiAcc.avatar)}" alt="" style="width:36px;height:36px;">`
             : `<div class="post-avatar-placeholder" style="width:36px;height:36px;font-size:14px;background:${aiAcc.avatarBg || '#6c5ce7'};">${window.App.escapeHtml(aiAcc.avatarText || aiAcc.nickname?.charAt(0) || 'A')}</div>`;
 
+        const thinkingId = 'aiThinking-' + postId;
+
         overlay.innerHTML = `
             <div class="modal-dialog ai-comment-modal">
                 <div class="ai-comment-modal-header">
                     ${avatarHtml}
                     <span class="ai-comment-modal-name">${window.App.escapeHtml(aiAcc.nickname)}</span>
                     <span class="ai-comment-modal-badge">AI</span>
+                    ${reasoning ? `<span class="thinking-badge" onclick="(function(el){var c=document.getElementById('${thinkingId}');if(c){c.style.display=c.style.display==='block'?'none':'block';}})(this)">💭</span>` : ''}
                 </div>
+                ${reasoning ? `<div class="ai-comment-thinking" id="${thinkingId}" style="display:block"><div class="ai-comment-thinking-content">${window.App.escapeHtml(reasoning)}</div></div>` : ''}
                 <textarea class="ai-comment-modal-textarea" id="aiCommentModalText-${postId}" maxlength="5000">${window.App.escapeHtml(reply)}</textarea>
                 <div class="ai-comment-modal-actions">
                     <button class="btn btn-cancel" id="aiCommentModalRegen-${postId}">🔄 重新生成</button>
@@ -112,7 +118,7 @@
             const text = textarea.value.trim();
             if (!text) return;
             close();
-            publishAIComment(postId, aiAcc.id, text);
+            publishAIComment(postId, aiAcc.id, text, reasoning);
         };
 
         regenBtn.onclick = async () => {
@@ -170,18 +176,56 @@
                     throw new Error(errMsg);
                 }
                 const data = await res.json();
-                const rawReply = (isVolcengine
-                    ? data.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
-                    : data.choices?.[0]?.message?.content)?.trim();
+                let newReasoning = null;
+                let rawReply;
+                if (isVolcengine) {
+                    const msgOutput = data.output?.find(o => o.type === 'message');
+                    rawReply = msgOutput?.content?.find(c => c.type === 'output_text')?.text?.trim();
+                    newReasoning = data.output?.find(o => o.type === 'reasoning')?.content?.trim() || null;
+                } else {
+                    const msg = data.choices?.[0]?.message;
+                    rawReply = msg?.content?.trim();
+                    newReasoning = msg?.reasoning_content?.trim() || null;
+                }
                 if (!rawReply) throw new Error('未生成有效回复');
 
                 const shouldLike = extractShouldLike(rawReply);
                 const newReply = stripJsonMetadata(rawReply);
                 if (shouldLike) applyAILike(postId, aiAcc.id);
 
+                reasoning = newReasoning;
                 textarea.value = newReply;
                 textarea.focus();
                 textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+                const thinkingBlock = overlay.querySelector('.ai-comment-thinking');
+                const thinkingBadge = overlay.querySelector('.thinking-badge');
+                if (newReasoning) {
+                    if (thinkingBlock) {
+                        thinkingBlock.querySelector('.ai-comment-thinking-content').textContent = newReasoning;
+                        thinkingBlock.style.display = 'block';
+                    } else {
+                        const div = document.createElement('div');
+                        div.className = 'ai-comment-thinking';
+                        div.id = 'aiThinking-' + postId;
+                        div.style.display = 'block';
+                        div.innerHTML = `<div class="ai-comment-thinking-content">${window.App.escapeHtml(newReasoning)}</div>`;
+                        textarea.parentNode.insertBefore(div, textarea);
+                    }
+                    if (!thinkingBadge) {
+                        const badge = document.createElement('span');
+                        badge.className = 'thinking-badge';
+                        badge.textContent = '💭';
+                        badge.onclick = function () {
+                            const c = document.getElementById('aiThinking-' + postId);
+                            if (c) c.style.display = c.style.display === 'block' ? 'none' : 'block';
+                        };
+                        overlay.querySelector('.ai-comment-modal-header').appendChild(badge);
+                    }
+                } else {
+                    if (thinkingBlock) thinkingBlock.remove();
+                    if (thinkingBadge) thinkingBadge.remove();
+                }
             } catch (e) {
                 clearTimeout(timeoutId);
                 if (e.name === 'AbortError') window.App.showToast('⏰ AI 请求超时');
@@ -416,16 +460,24 @@
             }
             const data = await res.json();
             // 火山引擎 responses API 返回 output（含 reasoning + message），OpenAI 返回 choices
-            const rawReply = (isVolcengine
-                ? data.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
-                : data.choices?.[0]?.message?.content)?.trim();
+            let reasoning = null;
+            let rawReply;
+            if (isVolcengine) {
+                const msgOutput = data.output?.find(o => o.type === 'message');
+                rawReply = msgOutput?.content?.find(c => c.type === 'output_text')?.text?.trim();
+                reasoning = data.output?.find(o => o.type === 'reasoning')?.content?.trim() || null;
+            } else {
+                const msg = data.choices?.[0]?.message;
+                rawReply = msg?.content?.trim();
+                reasoning = msg?.reasoning_content?.trim() || null;
+            }
             if (!rawReply) throw new Error('未生成有效回复');
 
             const shouldLike = extractShouldLike(rawReply);
             const reply = stripJsonMetadata(rawReply);
             if (shouldLike) applyAILike(postId, selectedAIAcc.id);
 
-            showAICommentModal(postId, selectedAIAcc, reply);
+            showAICommentModal(postId, selectedAIAcc, reply, reasoning);
         } catch (e) {
             clearTimeout(timeoutId);
             if (e.name === 'AbortError') window.App.showToast('⏰ AI 请求超时');
