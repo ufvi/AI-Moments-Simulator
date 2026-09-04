@@ -18,12 +18,12 @@
                 '<div class="header-avatar-placeholder" style="background:#ccc;">?</div>';
             $headerNickname.textContent = '未登录';
         } else {
-            if (acc.avatarText) {
-                $headerAvatar.innerHTML =
-                    `<div class="header-avatar-placeholder" style="background:${acc.avatarBg};font-size:${window.App.isEmoji(acc.avatarText) ? '26px' : '20px'}">${window.App.escapeHtml(acc.avatarText)}</div>`;
-            } else if (acc.avatar && acc.avatar.startsWith('data:')) {
+            if (acc.avatar && acc.avatar.startsWith('data:')) {
                 $headerAvatar.innerHTML =
                     `<img class="header-avatar" src="${acc.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="header-avatar-placeholder" style="display:none;background:${acc.avatarBg}">${acc.nickname.charAt(0).toUpperCase()}</div>`;
+            } else if (acc.avatarText) {
+                $headerAvatar.innerHTML =
+                    `<div class="header-avatar-placeholder" style="background:${acc.avatarBg};font-size:${window.App.isEmoji(acc.avatarText) ? '26px' : '20px'}">${window.App.escapeHtml(acc.avatarText)}</div>`;
             } else {
                 $headerAvatar.innerHTML =
                     `<div class="header-avatar-placeholder" style="background:${acc.avatarBg}">${acc.nickname.charAt(0).toUpperCase()}</div>`;
@@ -47,11 +47,11 @@
             let sbAvHtml;
             if (!acc) {
                 sbAvHtml = '<div class="header-avatar-placeholder" style="background:#ccc;">?</div>';
-            } else if (acc.avatarText) {
-                sbAvHtml = '<div class="header-avatar-placeholder" style="background:' + acc.avatarBg + ';font-size:' + (window.App.isEmoji(acc.avatarText) ? '26px' : '20px') + '">' + window.App.escapeHtml(acc.avatarText) + '</div>';
             } else if (acc.avatar && acc.avatar.startsWith('data:')) {
                 sbAvHtml = '<img class="header-avatar" src="' + acc.avatar + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">' +
                     '<div class="header-avatar-placeholder" style="display:none;background:' + acc.avatarBg + '">' + acc.nickname.charAt(0).toUpperCase() + '</div>';
+            } else if (acc.avatarText) {
+                sbAvHtml = '<div class="header-avatar-placeholder" style="background:' + acc.avatarBg + ';font-size:' + (window.App.isEmoji(acc.avatarText) ? '26px' : '20px') + '">' + window.App.escapeHtml(acc.avatarText) + '</div>';
             } else {
                 sbAvHtml = '<div class="header-avatar-placeholder" style="background:' + (acc ? acc.avatarBg : '#ccc') + '">' + (acc ? acc.nickname.charAt(0).toUpperCase() : '?') + '</div>';
             }
@@ -112,11 +112,17 @@
         aiAccounts.sort(function (a, b) { return (aiCommentCounts[b.id] || 0) - (aiCommentCounts[a.id] || 0); });
         aiAccounts.forEach(function (a) {
             var isActive = a.id === window.App.activeAIId;
-            var aiAvText = a.avatarText || '🤖';
-            var aiAvIsEmoji = window.App.isEmoji(aiAvText);
             var count = aiCommentCounts[a.id] || 0;
+            var aiAvHtml;
+            if (a.avatar && a.avatar.startsWith('data:')) {
+                aiAvHtml = '<img class="avatar-sm" src="' + a.avatar + '" style="flex-shrink:0;">';
+            } else {
+                var aiAvText = a.avatarText || '🤖';
+                var aiAvIsEmoji = window.App.isEmoji(aiAvText);
+                aiAvHtml = '<div class="avatar-placeholder-sm" style="background:' + a.avatarBg + ';font-size:' + (aiAvIsEmoji ? '18px' : '14px') + ';flex-shrink:0;">' + window.App.escapeHtml(aiAvText) + '</div>';
+            }
             html += '<div class="sidebar-ai-account-item' + (isActive ? ' active' : '') + '" data-ai-id="' + a.id + '">' +
-                '<div class="avatar-placeholder-sm" style="background:' + a.avatarBg + ';font-size:' + (aiAvIsEmoji ? '18px' : '14px') + ';flex-shrink:0;">' + window.App.escapeHtml(aiAvText) + '</div>' +
+                aiAvHtml +
                 '<span class="sidebar-ai-account-name">' + window.App.escapeHtml(a.nickname) + '</span>' +
                 '<span class="sidebar-comment-count">' + count + '</span>' +
                 (isActive ? '<span class="sidebar-ai-check">✓</span>' : '') +
@@ -202,10 +208,10 @@
             const isActive = a.id === window.App.currentId;
             const postCount = postCounts[a.id] || 0;
             let avHtml;
-            if (a.avatarText) {
-                avHtml = `<div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:${window.App.isEmoji(a.avatarText) ? '24px' : '16px'}">${window.App.escapeHtml(a.avatarText)}</div>`;
-            } else if (a.avatar?.startsWith('data:')) {
+            if (a.avatar?.startsWith('data:')) {
                 avHtml = `<img class="avatar-sm" src="${a.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="avatar-placeholder-sm" style="display:none;background:${a.avatarBg}">${a.nickname.charAt(0).toUpperCase()}</div>`;
+            } else if (a.avatarText) {
+                avHtml = `<div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:${window.App.isEmoji(a.avatarText) ? '24px' : '16px'}">${window.App.escapeHtml(a.avatarText)}</div>`;
             } else {
                 avHtml = `<div class="avatar-placeholder-sm" style="background:${a.avatarBg}">${a.nickname.charAt(0).toUpperCase()}</div>`;
             }
@@ -250,10 +256,16 @@
             const isActive = a.id === window.App.activeAIId;
             const act = a.activity ?? 1;
             const actBadge = `<span class="ai-activity-badge${act === 0 ? ' zero' : ''}">${act === 0 ? '已禁用' : '活跃' + act}</span>`;
-            const aiAvText = a.avatarText || '🤖';
-            const aiAvIsEmoji = window.App.isEmoji(aiAvText);
+            let aiAvHtml2;
+            if (a.avatar?.startsWith('data:')) {
+                aiAvHtml2 = `<img class="avatar-sm" src="${a.avatar}" style="flex-shrink:0;">`;
+            } else {
+                const aiAvText = a.avatarText || '🤖';
+                const aiAvIsEmoji = window.App.isEmoji(aiAvText);
+                aiAvHtml2 = `<div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:${aiAvIsEmoji ? '18px' : '14px'};flex-shrink:0;">${window.App.escapeHtml(aiAvText)}</div>`;
+            }
             return `<div class="account-dropdown-item${isActive ? ' active' : ''}" data-ai-id="${a.id}" style="${isActive ? 'background:var(--ai-purple-light,rgba(124,92,252,0.1));' : ''}">
-            <div class="avatar-placeholder-sm" style="background:${a.avatarBg};font-size:${aiAvIsEmoji ? '18px' : '14px'};flex-shrink:0;">${window.App.escapeHtml(aiAvText)}</div>
+            ${aiAvHtml2}
             <span style="font-weight:${isActive ? '700' : '500'}">${window.App.escapeHtml(a.nickname)}${window.App.randomAIMode ? actBadge : ''}</span>
             <span style="margin-left:auto;color:var(--text-light);font-size:11px;white-space:nowrap;background:var(--btn-bg);padding:2px 8px;border-radius:10px;">${count}条评论</span>
             ${isActive ? '<span class="check-mark" style="color:var(--ai-purple);">✓</span>' : ''}
@@ -360,12 +372,12 @@
 
         // Build small avatar
         let avInner;
-        if (cu.avatarText) {
+        if (cu.avatar && cu.avatar.startsWith('data:')) {
+            avInner = `<img src="${cu.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.14);margin-top:1px;"><div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};display:none;">${cu.nickname?.charAt(0)?.toUpperCase() || '?'}</div>`;
+        } else if (cu.avatarText) {
             const isEmoji = window.App.isEmoji(cu.avatarText);
             const avFontSize = isEmoji ? '14px' : '11px';
             avInner = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:${avFontSize}">${window.App.escapeHtml(cu.avatarText)}</div>`;
-        } else if (cu.avatar && cu.avatar.startsWith('data:')) {
-            avInner = `<img src="${cu.avatar}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.14);margin-top:1px;"><div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};display:none;">${cu.nickname?.charAt(0)?.toUpperCase() || '?'}</div>`;
         } else {
             avInner = `<div class="comment-avatar-sm" style="background:${cu.avatarBg || '#888'};font-size:11px">${cu.nickname?.charAt(0)?.toUpperCase() || '?'}</div>`;
         }
@@ -522,38 +534,57 @@
         const likeCnt = post.likes.length;
         const cmtCnt = post.comments.length;
         let avatarHtml;
-        if (author.avatarText) {
-            avatarHtml = `<div class="post-avatar-placeholder" style="background:${author.avatarBg};font-size:${window.App.isEmoji(author.avatarText) ? '30px' : '22px'}">${window.App.escapeHtml(author.avatarText)}</div>`;
-        } else if (author.avatar?.startsWith('data:')) {
+        if (author.avatar?.startsWith('data:')) {
             avatarHtml = `<img class="post-avatar" src="${author.avatar}">`;
+        } else if (author.avatarText) {
+            avatarHtml = `<div class="post-avatar-placeholder" style="background:${author.avatarBg};font-size:${window.App.isEmoji(author.avatarText) ? '30px' : '22px'}">${window.App.escapeHtml(author.avatarText)}</div>`;
         } else {
             avatarHtml = `<div class="post-avatar-placeholder" style="background:${author.avatarBg}">${author.nickname.charAt(0).toUpperCase()}</div>`;
         }
 
         let mediaHtml = '';
         const allImages = post.images || [];
-        if (allImages.length) {
+        const allVideos = post.videos || [];
+        // Live 配对（支持：纯一张 Live；或 Live 封面与普通图混排）
+        const livePairs = resolveLivePairs(post);
+        const coverClipMap = {};
+        const pairClipMids = {};
+        livePairs.forEach(function (p) { coverClipMap[p.cover] = p.clip; pairClipMids[p.clip] = true; });
+        const pureSingleLive = livePairs.length === 1 && allImages.length === 1 && allVideos.length === 1;
+        if (pureSingleLive) {
+            // 单张 Live：延续“照片 + LIVE 角标，点按原地播放”的布局
+            mediaHtml = liveMediaCoverHtml(post, allImages[0], allVideos[0]);
+        } else if (allImages.length) {
+            // 多图（Live 封面与普通图同网格）：Live 封面格带 ▶ 芯片，点击全屏播放短片
             mediaHtml += '<div class="post-images-grid' +
                 (allImages.length === 1 ? ' single-col' : allImages.length === 2 ? ' double-col' : '') +
                 '">';
             allImages.forEach((mid, i) => {
-                mediaHtml += `<div class="post-image-wrapper" data-media-id="${mid}" data-post-id="${post.id}" data-image-index="${i}">
-                <img data-media-id="${mid}" style="display:none;">
+                const clipMid = coverClipMap[mid];
+                mediaHtml += `<div class="post-image-wrapper${clipMid ? ' live-grid-cell' : ''}" data-media-id="${mid}" data-post-id="${post.id}" data-image-index="${i}"${clipMid ? ' data-live-clip="' + clipMid + '"' : ''}>
+                <img data-media-id="${mid}" style="display:none;">${clipMid ? '<span class="live-grid-chip">▶ LIVE</span>' : ''}
             </div>`;
             });
             mediaHtml += '</div>';
+            // 不在配对里的普通视频仍按常规视频块展示（Live 短片不会单独露出来）
+            allVideos.forEach(mid => {
+                if (!pairClipMids[mid]) {
+                    mediaHtml += `<div class="post-video-wrapper"><video controls data-media-id="${mid}"></video></div>`;
+                }
+            });
+        } else {
+            allVideos.forEach(mid => mediaHtml +=
+                `<div class="post-video-wrapper"><video controls data-media-id="${mid}"></video></div>`);
         }
-        (post.videos || []).forEach(mid => mediaHtml +=
-            `<div class="post-video-wrapper"><video controls data-media-id="${mid}"></video></div>`);
 
         cmtsHtml = renderCommentsHtml(post);
 
         const curUser = window.App.getCurAcc();
         let curAvHtml;
-        if (curUser?.avatarText) {
-            curAvHtml = `<div class="comment-input-avatar-placeholder" data-post-id="${post.id}" title="双击发送AI评论" style="background:${curUser?.avatarBg || '#ccc'};font-size:${window.App.isEmoji(curUser.avatarText) ? '24px' : '16px'}">${window.App.escapeHtml(curUser.avatarText)}</div>`;
-        } else if (curUser?.avatar?.startsWith('data:')) {
+        if (curUser?.avatar?.startsWith('data:')) {
             curAvHtml = `<img class="comment-input-avatar" data-post-id="${post.id}" title="双击发送AI评论" src="${curUser.avatar}">`;
+        } else if (curUser?.avatarText) {
+            curAvHtml = `<div class="comment-input-avatar-placeholder" data-post-id="${post.id}" title="双击发送AI评论" style="background:${curUser?.avatarBg || '#ccc'};font-size:${window.App.isEmoji(curUser.avatarText) ? '24px' : '16px'}">${window.App.escapeHtml(curUser.avatarText)}</div>`;
         } else {
             curAvHtml = `<div class="comment-input-avatar-placeholder" data-post-id="${post.id}" title="双击发送AI评论" style="background:${curUser?.avatarBg || '#ccc'}">${curUser?.nickname.charAt(0).toUpperCase() || '?'}</div>`;
         }
@@ -580,10 +611,39 @@
 
         const likesBadge = likeCnt ? `<div class="post-likes-bar"><span class="likes-heart">♥</span><span class="likes-names">${post.likes.map(uid => window.App.getAcc(uid)?.nickname || '未知').slice(0, 8).join('、')}${likeCnt > 8 ? ' 等 ' + likeCnt + ' 人' : ''}</span></div>` : '';
 
+        // 该帖子的媒体有没有没传上云端的：显示提示 + 重传按钮
+        let mediaWarnHtml = '';
+        try {
+            if (window.App.getPendingMediaIds) {
+                const pendingSet = {};
+                window.App.getPendingMediaIds().forEach(function (id) { pendingSet[id] = true; });
+                const missing = (post.images || []).concat(post.videos || [])
+                    .filter(function (id) { return pendingSet[id]; });
+                if (missing.length) {
+                    let reason = '';
+                    try {
+                        const meta = (window.App.getPendingMediaMeta && window.App.getPendingMediaMeta()) || {};
+                        const texts = [];
+                        missing.forEach(function (id) {
+                            const m = meta[id];
+                            if (!m) return;
+                            if (m.http >= 400) texts.push('服务器拒绝(HTTP ' + m.http + ')');
+                            else if (m.kind === 'timeout') texts.push('上传超时');
+                            else if (m.kind === 'network') texts.push('网络异常');
+                            else texts.push('上传失败');
+                        });
+                        reason = texts.join('；');
+                    } catch (e) { }
+                    mediaWarnHtml = `<div class="post-upload-warn"${reason ? ' title="' + window.App.escapeHtml(reason) + '"' : ''}><span>☁️ 有 ${missing.length} 个媒体未上传成功</span><button data-action="retry-media" data-post-id="${post.id}">重传</button></div>`;
+                }
+            }
+        } catch (e) { }
+
         return `<div class="post-card${post.pinned ? ' pinned-card' : ''}" id="post-${post.id}">${post.pinned ? '<div class="pin-badge">📌 置顶</div>' : ''}
         <div class="post-header">${avatarHtml}<div class="post-user-info"><div class="post-nickname">${window.App.escapeHtml(author.nickname)}${window.App.getBadgeHtml(author)}</div><div class="post-time">${window.App.formatTime(post.timestamp)}</div>${situationTagHtml}${ghostTagHtml}</div><button class="post-menu-btn" data-action="toggle-menu" data-post-id="${post.id}" title="更多操作">${menuDotsIcon}</button><div class="post-menu-dropdown" id="postMenu-${post.id}" style="display:none;"><button data-action="edit-post" data-post-id="${post.id}">✏️ 编辑</button><button data-action="toggle-pin" data-post-id="${post.id}">${post.pinned ? '📌 取消置顶' : '📌 置顶'}</button><button data-action="share-post" data-post-id="${post.id}">📤 导出这条</button><button data-action="share-link" data-post-id="${post.id}">🔗 链接分享</button><button data-action="copy-post" data-post-id="${post.id}">📋 复制文字</button><button data-action="delete-post" data-post-id="${post.id}" class="danger">🗑️ 删除</button></div></div>
         ${post.text ? `<div class="post-text">${window.App.parseMarkdown(post.text)}</div>` : ''}
         ${mediaHtml}
+        ${mediaWarnHtml}
         <div class="post-actions"><button class="action-btn${isLiked ? ' liked' : ''}" data-action="like" data-post-id="${post.id}">${isLiked ? heartFilled : heartOutline}${likeCnt ? ' ' + likeCnt : ' 点赞'}</button><button class="action-btn btn-comment" data-action="focus-comment" data-post-id="${post.id}">${chatIcon}${cmtCnt ? ' ' + cmtCnt : ' 评论'}</button></div>
         ${likesBadge}${cmtsHtml}
         <div class="comment-input-row">${curAvHtml}<textarea placeholder="写评论…" maxlength="5000" id="commentInput-${post.id}" rows="1"></textarea>
@@ -605,13 +665,94 @@
         });
     }
 
+    // ── Live 动图卡片：封面 + 有声短片 ──
+    // 配对解析：新格式 post.livePairs；兼容旧格式 live=true + 单图单片
+    function resolveLivePairs(post) {
+        if (!post) return [];
+        let pairs = (Array.isArray(post.livePairs) && post.livePairs.length)
+            ? post.livePairs
+            : [];
+        if (!pairs.length && post.live &&
+            (post.images || []).length === 1 && (post.videos || []).length === 1) {
+            pairs = [{ cover: post.images[0], clip: post.videos[0] }];
+        }
+        return pairs.filter(function (p) { return p && p.cover && p.clip; })
+            .map(function (p) { return { cover: p.cover, clip: p.clip }; });
+    }
+
+    function liveMediaCoverHtml(post, coverMid, clipMid) {
+        coverMid = coverMid || (post.images || [])[0];
+        clipMid = clipMid || (post.videos || [])[0];
+        return '<div class="live-media" data-live-post-id="' + post.id + '" data-live-cover="' + coverMid + '" data-live-clip="' + clipMid + '">' +
+            '<div class="post-image-wrapper live-cover" data-media-id="' + coverMid + '" data-post-id="' + post.id + '" data-image-index="0" data-live-cover="1"><img data-media-id="' + coverMid + '" style="display:none;"></div>' +
+            '<span class="live-badge">LIVE</span>' +
+            '<span class="live-replay-btn">▶</span>' +
+            '</div>';
+    }
+
+    // 点按封面：加载短片并播放（点击手势 → 允许带声音；iOS 内联播放）
+    function playLivePost(postId) {
+        const post = window.App.posts.find(p => p.id === postId);
+        const el = document.querySelector('.live-media[data-live-post-id="' + postId + '"]');
+        if (!post || !el) return;
+        if (el.dataset.state === 'loading' || el.dataset.state === 'playing') return;
+        const clipMid = (post.videos || [])[0];
+        if (!clipMid) return;
+        el.dataset.state = 'loading';
+        window.App.loadMediaUrl(clipMid).then(url => {
+            if (!url || !document.body.contains(el)) { delete el.dataset.state; return; }
+            el.dataset.state = 'playing';
+            const back = function () {
+                if (!document.body.contains(el)) return;
+                el.dataset.state = '';
+                el.innerHTML = liveMediaCoverHtml(post);
+                observeMediaInContainer(el);
+            };
+            el.innerHTML = '<div class="live-player-wrap">' +
+                '<video class="live-player" src="' + url + '" autoplay playsinline webkit-playsinline controls preload="auto"></video>' +
+                '<button class="live-close" title="收起回到照片">✕</button></div>';
+            const v = el.querySelector('video');
+            if (!v) { back(); return; }
+            v.addEventListener('ended', function () { setTimeout(back, 400); });
+            el.querySelector('.live-close').onclick = function (e) {
+                e.stopPropagation();
+                try { v.pause(); } catch (err) { }
+                back();
+            };
+            const p = v.play();
+            if (p && p.catch) p.catch(function () {
+                // iOS Safari：有声播放必须在用户手势触发的同步调用栈里发起，
+                // 异步加载后首次 play 常被拦截 → 降级为无声播放，用户点 🔊 即可开声
+                v.muted = true;
+                var p2 = v.play();
+                if (p2 && p2.catch) p2.catch(function () { });
+                window.App.showToast('🔇 点视频右下角 🔊 可开启声音');
+            });
+        }).catch(function () { delete el.dataset.state; });
+    }
+
     function bindCardEvents() {
         const $timeline = $('#timeline');
         if (!$timeline) return;
 
-        $timeline.querySelectorAll('.post-image-wrapper').forEach(w => w.onclick = () => {
-            const post = window.App.posts.find(p => p.id === w.dataset.postId);
-            if (post?.images?.length) window.App.openImageModal(post.images, parseInt(w.dataset.imageIndex));
+        $timeline.querySelectorAll('.live-media').forEach(m => m.onclick = () => {
+            window.App.playLivePost(m.dataset.livePostId);
+        });
+        $timeline.querySelectorAll('.post-image-wrapper').forEach(w => {
+            // 纯 Live 封面：点击交给 playLivePost（不进图片大图）
+            if (w.dataset.liveCover) return;
+            w.onclick = () => {
+                // 混排网格里的 Live 封面：进大图预览（自动播放 + 可用上一张/下一张）
+                if (w.dataset.liveClip) {
+                    const livePost = window.App.posts.find(p => p.id === w.dataset.postId);
+                    if (livePost?.images?.length) {
+                        window.App.openImageModal(livePost.images, parseInt(w.dataset.imageIndex), livePost.id);
+                    }
+                    return;
+                }
+                const post = window.App.posts.find(p => p.id === w.dataset.postId);
+                if (post?.images?.length) window.App.openImageModal(post.images, parseInt(w.dataset.imageIndex), post.id);
+            };
         });
         $timeline.querySelectorAll('[data-action="toggle-menu"]').forEach(b => b.onclick = (e) => {
             e.stopPropagation();
@@ -624,6 +765,53 @@
         $timeline.querySelectorAll('[data-action="share-link"]').forEach(b => b.onclick = () => window.App.shareLink(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="copy-post"]').forEach(b => b.onclick = () => window.App.copyPost(b.dataset.postId));
         $timeline.querySelectorAll('[data-action="like"]').forEach(b => b.onclick = () => window.App.toggleLike(b.dataset.postId));
+        // 媒体重传按钮
+        $timeline.querySelectorAll('[data-action="retry-media"]').forEach(b => {
+            b.onclick = async function () {
+                const postId = b.dataset.postId;
+                const post = window.App.posts.find(p => p.id === postId);
+                if (!post) return;
+                let pending = [];
+                try {
+                    if (window.App.getPendingMediaIds) {
+                        const pendSet = {};
+                        window.App.getPendingMediaIds().forEach(id => pendSet[id] = true);
+                        pending = (post.images || []).concat(post.videos || []).filter(id => pendSet[id]);
+                    }
+                } catch (e) { }
+                if (!pending.length) { window.App.updateCard(postId); return; }
+                b.disabled = true;
+                const oldText = b.textContent;
+                b.textContent = '重传中…';
+                try {
+                    const n = await window.App.retryPendingMedia(pending);
+                    if (n > 0) {
+                        window.App.showToast('✅ 已重传 ' + n + ' 个媒体');
+                    } else {
+                        let reason = '请检查网络后重试';
+                        try {
+                            const meta = (window.App.getPendingMediaMeta && window.App.getPendingMediaMeta()) || {};
+                            const m = meta[pending[0]];
+                            if (m) {
+                                if (m.http >= 400) {
+                                    reason = '服务器拒绝(HTTP ' + m.http + ')';
+                                    if (m.detail) reason += '：' + String(m.detail).slice(0, 80);
+                                } else if (m.kind === 'timeout') reason = '上传超时';
+                                else if (m.kind === 'network') reason = '网络异常';
+                                else reason = '上传失败';
+                            }
+                        } catch (e) { }
+                        window.App.showToast('☁️ 重传未成功：' + reason);
+                    }
+                } catch (e) {
+                    window.App.showToast('❌ 重传失败');
+                } finally {
+                    b.disabled = false;
+                    b.textContent = oldText;
+                    window.App.updateCard(postId); // 全部成功→提示消失；仍有失败→保留按钮
+                }
+            };
+        });
         $timeline.querySelectorAll('.cb-toggle').forEach(b => b.onclick = (e) => { e.stopPropagation(); toggleCommentBody(b); });
         $timeline.querySelectorAll('[data-action="focus-comment"]').forEach(b => b.onclick = () => {
             const isMobile = window.matchMedia('not (pointer: fine)').matches;
@@ -1034,14 +1222,14 @@
             if (avContainer) {
                 var pid = avContainer.dataset.postId;
                 var newAvHtml;
-                if (curUser?.avatarText) {
+                if (curUser?.avatar && curUser.avatar.indexOf('data:') === 0) {
+                    newAvHtml = '<img class="comment-input-avatar" data-post-id="' + pid +
+                        '" title="双击发送AI评论" src="' + curUser.avatar + '">';
+                } else if (curUser?.avatarText) {
                     newAvHtml = '<div class="comment-input-avatar-placeholder" data-post-id="' + pid +
                         '" title="双击发送AI评论" style="background:' + (curUser.avatarBg || '#ccc') +
                         ';font-size:' + (window.App.isEmoji(curUser.avatarText) ? '24px' : '16px') + '">' +
                         window.App.escapeHtml(curUser.avatarText) + '</div>';
-                } else if (curUser?.avatar && curUser.avatar.indexOf('data:') === 0) {
-                    newAvHtml = '<img class="comment-input-avatar" data-post-id="' + pid +
-                        '" title="双击发送AI评论" src="' + curUser.avatar + '">';
                 } else {
                     newAvHtml = '<div class="comment-input-avatar-placeholder" data-post-id="' + pid +
                         '" title="双击发送AI评论" style="background:' + (curUser?.avatarBg || '#ccc') + '">' +
@@ -1182,6 +1370,8 @@
     window.App.observeMediaInContainer = observeMediaInContainer;
     window.App.bindCardEvents = bindCardEvents;
     window.App.updateCard = updateCard;
+    window.App.playLivePost = playLivePost;
+    window.App.resolveLivePairs = resolveLivePairs;
     window.App.updateCommentsSection = updateCommentsSection;
     window.App.toggleMenu = toggleMenu;
     window.App.togglePin = togglePin;

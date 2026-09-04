@@ -76,8 +76,12 @@
                     canvas.toBlob(b => b ? resolve(b) : reject(new Error('压缩失败')), mime,
                         quality);
                 };
+                // 浏览器无法解码的格式（如非苹果设备上的 HEIC）会停在 onload 之前，
+                // 必须显式报错，否则发布流程会一直挂着
+                img.onerror = () => reject(new Error('图片格式无法解码（HEIC 等）'));
                 img.src = reader.result;
             };
+            reader.onerror = () => reject(new Error('读取文件失败'));
             reader.readAsDataURL(file);
         });
     }
@@ -113,6 +117,100 @@
         reader.readAsDataURL(file);
     }
 
+    // ── 安卓“动态照片”（Motion Photo）自动拆轨 ──
+    // 部分机型（小米/OPPO 等）的动态照片 jpg 里其实内嵌了【两段视频】：
+    //   预览动图（HINT，短小）+ 完整视频（FULL）。
+    // 只拿“第一个能解码的”会抽到预览动图，所以这里把所有候选都验一遍，
+    // 最后挑 时长最长 / 体积最大 的那段（即完整版）。
+    function validateVideoBlob(blob, cb) {
+        const url = URL.createObjectURL(blob);
+        const v = document.createElement('video');
+        let done = false;
+        const timer = setTimeout(function () { finish(false, 0); }, 2000);
+        function finish(ok, dur) {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            URL.revokeObjectURL(url);
+            cb(ok, dur);
+        }
+        v.onloadedmetadata = function () {
+            finish(v.duration > 0 && !isNaN(v.duration), v.duration || 0);
+        };
+        v.onerror = function () { finish(false, 0); };
+        v.preload = 'metadata';
+        v.muted = true;
+        v.src = url;
+    }
+
+    function tryExtractMotionClip(file) {
+        return new Promise(function (resolve) {
+            // 总超时保护：任何环节卡住都不能让调用方一直等
+            const guard = setTimeout(function () { resolve(null); }, 15000);
+            const settle = function (v) { clearTimeout(guard); resolve(v); };
+            try {
+                if (!file) { settle(null); return; }
+                const isJpeg = (file.type || '').indexOf('image/jpeg') === 0 ||
+                    (file.name && /\.jpe?g$/i.test(file.name));
+                if (!isJpeg) { settle(null); return; }
+                const reader = new FileReader();
+                reader.onerror = function () { settle(null); };
+                reader.onload = function () {
+                    try {
+                        const bytes = new Uint8Array(reader.result);
+                        // 只处理真正的 JPEG（FF D8 FF 开头）
+                        if (bytes.length < 16 || bytes[0] !== 0xFF || bytes[1] !== 0xD8 || bytes[2] !== 0xFF) {
+                            settle(null);
+                            return;
+                        }
+                        // 从尾部向前找 'ftyp'（MP4 容器开头，内嵌视频一般按 “预览段 + 完整段” 追加在 JPEG 后）
+                        // 取最后若干个候选，避免大量误命中拖慢验证
+                        const positions = [];
+                        for (let i = bytes.length - 5; i >= 4 && positions.length < 12; i--) {
+                            if (bytes[i] === 0x66 && bytes[i + 1] === 0x74 &&
+                                bytes[i + 2] === 0x79 && bytes[i + 3] === 0x70) {
+                                positions.push(i);
+                            }
+                        }
+                        if (!positions.length) { settle(null); return; }
+                        // 依次验证所有候选，记录最好的一段
+                        //（同一段 mp4 内也可能多次出现 ftyp（如 moov 后移），时长/体积相同的取后一次即可）
+                        let best = null; // { blob, dur, size }
+                        let idx = 0;
+                        function tryNext() {
+                            if (idx >= positions.length) {
+                                if (best) {
+                                    console.log('[Live] 动态照片内嵌候选', positions.length, '个，选中时长', Math.round(best.dur * 10) / 10 + 's', '大小', Math.round(best.size / 1024) + 'KB');
+                                    settle(best.blob);
+                                } else {
+                                    settle(null);
+                                }
+                                return;
+                            }
+                            const p = positions[idx++];
+                            const start = p - 4;
+                            if (start < 0) { tryNext(); return; }
+                            const blob = new Blob([bytes.slice(start)], { type: 'video/mp4' });
+                            validateVideoBlob(blob, function (ok, dur) {
+                                if (ok) {
+                                    const size = blob.size;
+                                    // 优选：时长更长；时长几乎一样时选体积更大的（更可能是完整版）
+                                    if (!best || dur > best.dur + 0.1 ||
+                                        (Math.abs(dur - best.dur) <= 0.1 && size > best.size)) {
+                                        best = { blob: blob, dur: dur, size: size };
+                                    }
+                                }
+                                tryNext();
+                            });
+                        }
+                        tryNext();
+                    } catch (e) { settle(null); }
+                };
+                reader.readAsArrayBuffer(file);
+            } catch (e) { settle(null); }
+        });
+    }
+
     window.App = window.App || {};
     window.App.formatTime = formatTime;
     window.App.escapeHtml = escapeHtml;
@@ -122,4 +220,5 @@
     window.App.base64ToBlob = base64ToBlob;
     window.App.compressImg = compressImg;
     window.App.compressImgToDataUrl = compressImgToDataUrl;
+    window.App.tryExtractMotionClip = tryExtractMotionClip;
 })();

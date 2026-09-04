@@ -340,7 +340,7 @@ window._fbGetGuest = async function (guestId) {
 // share.html 需要用到：发帖人、AI 账号（代写/评论）等
 window._fbSharePost = async function (post, accountsMap) {
     try {
-        // 把 mediaId 解析成完整 URL，share.html 才能正确加载
+        // 把 mediaId 解析成完整 URL（base64 编码，不暴露 ns）
         var snapshot = cleanForFirebase(post);
         if (snapshot.images && snapshot.images.length) {
             snapshot.images = await Promise.all(snapshot.images.map(function (mid) {
@@ -447,33 +447,133 @@ window._fbGetShareGuest = async function (guestId) {
 // 图片 — 全部走 Cloudflare R2（与命名空间隔离）
 // ════════════════════════════════════════════════════════════
 
-window._fbUploadMedia = async function (mediaId, blob, mimeType) {
-    try {
-        const nsMediaId = `${NAMESPACE}/${mediaId}`;
-        const base = WORKER_BASE_URL || location.origin;
-        const res = await fetch(`${base}/api/media/${encodeURIComponent(nsMediaId)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': mimeType },
-            body: blob,
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        return data.url;
-    } catch (e) {
-        console.warn('R2 upload failed:', e);
-        return null;
+// urlsafe-base64(ns + '|||' + mediaId)，不暴露 ns
+function encodeMediaPath(ns, mid) {
+    return btoa(ns + '|||' + mid).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// 单次上传（小文件 / 分片不可用时的回退）
+function _fbUploadSingle(mediaId, blob, mimeType, onProgress) {
+    return new Promise((resolve) => {
+        try {
+            const token = encodeMediaPath(NAMESPACE, mediaId);
+            const base = WORKER_BASE_URL || location.origin;
+            const url = `${base}/api/media/${token}`;
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', url);
+            xhr.setRequestHeader('Content-Type', mimeType);
+            // 上传必须有个截止时间：否则弱网/挂起的请求会让发布流程无限等待
+            // 视频等大文件给更宽裕的时间
+            xhr.timeout = blob.size > 5 * 1024 * 1024 ? 300000 : 120000;
+            xhr.ontimeout = function () {
+                console.warn('R2 upload timeout:', mediaId);
+                window._fbLastMediaErr = { id: mediaId, kind: 'timeout' };
+                resolve(null);
+            };
+            if (onProgress && xhr.upload) {
+                xhr.upload.onprogress = function (e) {
+                    if (e.lengthComputable) onProgress(e.loaded, e.total);
+                };
+            }
+            xhr.onload = function () {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    window._fbLastMediaErr = null;
+                    try { resolve(JSON.parse(xhr.responseText).url); }
+                    catch { resolve(xhr.responseText); }
+                } else {
+                    console.warn('R2 upload failed: HTTP', xhr.status, xhr.responseText);
+                    window._fbLastMediaErr = {
+                        id: mediaId, kind: 'http', http: xhr.status,
+                        detail: 'size=' + blob.size + ' ' + String(xhr.responseText || '').slice(0, 120)
+                    };
+                    resolve(null);
+                }
+            };
+            xhr.onerror = function () {
+                console.warn('R2 upload network error');
+                window._fbLastMediaErr = { id: mediaId, kind: 'network' };
+                resolve(null);
+            };
+            xhr.send(blob);
+        } catch (e) {
+            console.warn('R2 upload failed:', e);
+            window._fbLastMediaErr = { id: mediaId, kind: 'exception', detail: String(e && e.message || e) };
+            resolve(null);
+        }
+    });
+}
+
+// 分片上传（>15MB 走这里，绕开单请求体限制；每片 8MB）
+const MEDIA_CHUNK_THRESHOLD = 15 * 1024 * 1024;
+const MEDIA_CHUNK_SIZE = 8 * 1024 * 1024;
+
+async function _fbUploadMultipart(mediaId, blob, mimeType, onProgress) {
+    const token = encodeMediaPath(NAMESPACE, mediaId);
+    const base = WORKER_BASE_URL || location.origin;
+    const head = `${base}/api/media/${token}`;
+    async function jfetch(url, opts) {
+        const r = await fetch(url, opts);
+        let j = null;
+        try { j = await r.json(); } catch (e) { }
+        if (!r.ok || !j || j.error) {
+            const e = new Error((j && j.error) || ('HTTP ' + r.status));
+            e.status = r.status;
+            throw e;
+        }
+        return j;
     }
+    const created = await jfetch(head + '/multipart', { method: 'POST' });
+    const uploadId = created.uploadId;
+    const total = Math.max(1, Math.ceil(blob.size / MEDIA_CHUNK_SIZE));
+    const parts = [];
+    for (let i = 0; i < total; i++) {
+        const start = i * MEDIA_CHUNK_SIZE;
+        const chunk = blob.slice(start, Math.min(start + MEDIA_CHUNK_SIZE, blob.size));
+        const j = await jfetch(`${head}/multipart/${uploadId}/part/${i + 1}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: chunk
+        });
+        parts.push({ partNumber: i + 1, etag: j.etag });
+        if (onProgress) onProgress(Math.min(blob.size, start + chunk.size), blob.size);
+    }
+    const done = await jfetch(`${head}/multipart/${uploadId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parts })
+    });
+    return done.url;
+}
+
+window._fbUploadMedia = async function (mediaId, blob, mimeType, onProgress) {
+    window._fbLastMediaErr = null;
+    if (blob.size > MEDIA_CHUNK_THRESHOLD) {
+        try {
+            return await _fbUploadMultipart(mediaId, blob, mimeType, onProgress);
+        } catch (e) {
+            console.warn('分片上传失败，回退单次上传:', e);
+            const st = (e && e.status) || 0;
+            window._fbLastMediaErr = {
+                id: mediaId, kind: 'http', http: st,
+                detail: 'size=' + blob.size + ' ' + String(e && e.message || e).slice(0, 120)
+            };
+            // 分片任何失败（含 500：分片接口不可用/运行时问题）都回退单次上传，
+            // 只要文件不超过单请求上限（约 100MB）就能成功
+            return _fbUploadSingle(mediaId, blob, mimeType, onProgress);
+        }
+    }
+    return _fbUploadSingle(mediaId, blob, mimeType, onProgress);
 };
 
 window._fbGetMediaUrl = async function (mediaId) {
     const base = WORKER_BASE_URL || location.origin;
-    return `${base}/api/media/${encodeURIComponent(`${NAMESPACE}/${mediaId}`)}`;
+    return `${base}/api/media/${encodeMediaPath(NAMESPACE, mediaId)}`;
 };
 
 window._fbDownloadMedia = async function (mediaId) {
     try {
         const base = WORKER_BASE_URL || location.origin;
-        const res = await fetch(`${base}/api/media/${encodeURIComponent(`${NAMESPACE}/${mediaId}`)}`);
+        const res = await fetch(`${base}/api/media/${encodeMediaPath(NAMESPACE, mediaId)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.blob();
     } catch (e) {
@@ -485,7 +585,7 @@ window._fbDownloadMedia = async function (mediaId) {
 window._fbDeleteMedia = async function (mediaId) {
     try {
         const base = WORKER_BASE_URL || location.origin;
-        await fetch(`${base}/api/media/${encodeURIComponent(`${NAMESPACE}/${mediaId}`)}`, {
+        await fetch(`${base}/api/media/${encodeMediaPath(NAMESPACE, mediaId)}`, {
             method: 'DELETE',
         });
     } catch (e) {

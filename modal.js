@@ -18,9 +18,7 @@
             <label>昵称</label>
             <input type="text" id="editNickname" value="${window.App.escapeHtml(acc.nickname)}" maxlength="20">
             ${acc.isAI ? `<label>系统提示词</label>
-            <textarea id="editSystemPrompt" rows="3" placeholder="你是一个...">${window.App.escapeHtml(acc.systemPrompt || '')}</textarea>
-            <label>评论风格</label>
-            <input type="text" id="editStyle" value="${window.App.escapeHtml(acc.style || '')}" placeholder="例如：幽默、毒舌">
+            <textarea id="editSystemPrompt" rows="5" placeholder="说话风趣，带点俏皮...">${window.App.escapeHtml(acc.systemPrompt || '')}</textarea>
             <label>活跃度（随机模式下的被抽中概率权重）</label>
             <div class="activity-slider-row">
                 <input type="range" id="editActivity" min="0" max="10" step="1" value="${acc.activity ?? 1}">
@@ -29,7 +27,7 @@
             <p class="activity-hint">设为 0 则不参与随机评论，数值越大被抽中概率越高</p>` : ''}
             <label>文字/Emoji 头像</label>
             <input type="text" id="editAvatarText" value="${window.App.escapeHtml(acc.avatarText || '')}" maxlength="2" placeholder="输入一个文字或emoji，如：猫、🐱、A" style="margin-top:4px;">
-            <p class="hint-text">输入单个文字或emoji作为头像，优先级高于图片头像</p>
+            <p class="hint-text">未设置图片头像时，显示此文字或emoji</p>
             <!-- ========== 新增：头像背景色 ========== -->
             <label>头像背景色</label>
             <input type="text" id="editAvatarBg" value="${acc.avatarBg}" placeholder="#3498db" style="margin-top:4px;">
@@ -55,9 +53,9 @@
             </div>
             <div id="editAvatarPreview" style="text-align:center;margin-top:6px;">
                 ${(() => {
+                if (acc.avatar?.startsWith('data:')) return `<img src="${acc.avatar}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border);">`;
                 const t = acc.avatarText;
                 if (t) return `<div style="width:64px;height:64px;border-radius:50%;background:${acc.avatarBg};display:flex;align-items:center;justify-content:center;font-size:${window.App.isEmoji(t) ? '32px' : '26px'};color:#fff;margin:0 auto;border:2px solid var(--border);">${window.App.escapeHtml(t)}</div>`;
-                if (acc.avatar?.startsWith('data:')) return `<img src="${acc.avatar}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border);">`;
                 return `<div style="width:64px;height:64px;border-radius:50%;background:${acc.avatarBg};display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;margin:0 auto;border:2px solid var(--border);">${acc.nickname.charAt(0).toUpperCase()}</div>`;
             })()}
             </div>
@@ -176,7 +174,6 @@
             acc.badgeColor = overlay.querySelector('#editBadgeColor').value.trim() || '#888';
             if (acc.isAI) {
                 acc.systemPrompt = overlay.querySelector('#editSystemPrompt')?.value.trim() || '';
-                acc.style = overlay.querySelector('#editStyle')?.value.trim() || '';
                 acc.activity = parseInt(overlay.querySelector('#editActivity')?.value) ?? 1;
             }
             window.App.saveAccounts();
@@ -268,7 +265,6 @@
             avatarText: '',
             avatarBg: colors[Math.floor(Math.random() * colors.length)],
             systemPrompt: '',
-            style: '',
             badgeText: 'AI',
             badgeColor: '#888',
             activity: 1,                   // 活跃度（被随机抽中的概率权重），0=不参与
@@ -309,6 +305,21 @@
     async function openEditModal(id) {
         const post = window.App.posts.find(p => p.id === id);
         if (!post) return;
+        // 进入编辑前，先暂存发布框里正在写的内容（取消编辑时自动放回）
+        if (window.App.stashPreEdit) window.App.stashPreEdit();
+        // Live 帖：解析配对（新格式 livePairs；旧格式 live+单图单片 推导），
+        // 加载媒体时给封面/短片打上相同的 pairToken，保存时保持配对
+        const livePairs = (Array.isArray(post.livePairs) && post.livePairs.length)
+            ? post.livePairs
+            : ((post.live && (post.images || []).length === 1 && (post.videos || []).length === 1)
+                ? [{ cover: (post.images || [])[0], clip: (post.videos || [])[0] }]
+                : []);
+        const tokenByMid = {};
+        livePairs.forEach((p, i) => {
+            const t = 'lpe_' + i + '_' + post.id;
+            if (p && p.cover) tokenByMid[p.cover] = t;
+            if (p && p.clip) tokenByMid[p.clip] = t;
+        });
         window.App.editingPostId = id;
         window.App.editingPostUserId = post.userId;
         const $pt = document.querySelector('#publishText');
@@ -333,9 +344,13 @@
                 } catch (e) { }
             }
             if (blob) {
-                window.App.publishFiles.push({
-                    type: type, file: blob, previewUrl: URL.createObjectURL(blob), mediaId: mid
-                });
+                var entry = { type: type, file: blob, previewUrl: URL.createObjectURL(blob), mediaId: mid };
+                if (tokenByMid[mid]) {
+                    entry.live = true;
+                    entry.pairToken = tokenByMid[mid];
+                    entry.role = isVideo ? 'clip' : 'cover';
+                }
+                window.App.publishFiles.push(entry);
             }
         }
         const timeInput = document.querySelector('#scheduleTime');
@@ -353,7 +368,7 @@
         window.App.renderPostUserSwitcher();
         const acc = window.App.getAcc(window.App.editingPostUserId);
         const btnPublish = document.getElementById('btnPublish');
-        if (acc && !acc.id === window.App.currentId) {
+        if (acc && acc.id !== window.App.currentId) {
             btnPublish.textContent = `以${acc.nickname}身份发布`;
         } else {
             btnPublish.textContent = '保存修改';
@@ -384,6 +399,8 @@
                 }
             }
             window.App.posts = window.App.posts.filter(function (p) { return p.id !== id; });
+            // 删除的是“最近发布”快照对应的帖子时，同步清掉快照，避免之后误提示“发布丢失”
+            if (window.App.clearPublishedSnapshot) window.App.clearPublishedSnapshot(id);
             // savePosts 内部已调用 markLocalDirty + uploadToCloud
             window.App.savePosts();
             var card = document.getElementById('post-' + id);
@@ -398,23 +415,139 @@
         overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
     }
 
-    function openImageModal(ids, idx) {
+    // 图片大图预览：当浏览到 Live 封面时，自动播放一遍它的短片（播完回到封面）
+    let _modalLiveSeq = 0;
+    function clearModalLiveVideo() {
+        _modalLiveSeq++;
+        const el = document.querySelector('#imageModal .image-modal-live-video');
+        if (el) el.remove();
+        const img = document.getElementById('imageModalImg');
+        if (img) img.style.display = '';
+    }
+    function currentModalLiveClip() {
+        const d = window.App.modalData;
+        if (!d || !d.postId || !window.App.resolveLivePairs) return null;
+        const cur = d.entries[d.currentIndex];
+        if (!cur || !cur.id) return null;
+        const post = (window.App.posts || []).find(p => p.id === d.postId);
+        if (!post) return null;
+        const pairs = window.App.resolveLivePairs(post);
+        for (let i = 0; i < pairs.length; i++) {
+            if (pairs[i].cover === cur.id) return pairs[i].clip;
+        }
+        return null;
+    }
+    function playModalLiveClip(clipMid) {
+        const seq = ++_modalLiveSeq;
+        window.App.loadMediaUrl(clipMid).then(url => {
+            if (!url || seq !== _modalLiveSeq) return;
+            const img = document.getElementById('imageModalImg');
+            const wrap = img ? img.parentElement : null;
+            if (!wrap) return;
+            const old = wrap.querySelector('.image-modal-live-video');
+            if (old) old.remove();
+            img.style.display = 'none';
+            const v = document.createElement('video');
+            v.className = 'image-modal-live-video';
+            v.src = url;
+            v.autoplay = true;
+            v.playsInline = true;
+            v.setAttribute('webkit-playsinline', '');
+            v.controls = true;
+            v.preload = 'auto';
+            const finish = function () {
+                if (seq !== _modalLiveSeq) return;
+                const cur = wrap.querySelector('.image-modal-live-video');
+                if (cur === v) cur.remove();
+                img.style.display = '';
+            };
+            v.addEventListener('ended', finish);
+            wrap.appendChild(v);
+            const p = v.play();
+            if (p && p.catch) p.catch(function () {
+                // iOS：异步加载后有声播放常被拦 → 无声自动播一遍，用户可点控制条出声
+                v.muted = true;
+                const p2 = v.play();
+                if (p2 && p2.catch) p2.catch(function () { });
+            });
+        });
+    }
+
+    // 手机端：在图片上左右滑动切换上一张/下一张
+    function bindModalSwipe() {
+        const modal = document.querySelector('#imageModal');
+        if (!modal || modal._swipeBound) return;
+        modal._swipeBound = true;
+        let sx = null, sy = null;
+        modal.addEventListener('touchstart', function (e) {
+            if (e.touches.length !== 1) { sx = null; return; }
+            sx = e.touches[0].clientX;
+            sy = e.touches[0].clientY;
+        }, { passive: true });
+        modal.addEventListener('touchmove', function (e) {
+            if (sx === null || e.touches.length !== 1) return;
+            const dx = e.touches[0].clientX - sx;
+            const dy = e.touches[0].clientY - sy;
+            // 明显的横向滑动：阻止浏览器把它当成系统手势（如返回上一页）
+            if (Math.abs(dx) > 20 && Math.abs(dx) > Math.abs(dy) * 1.2 && e.cancelable) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+        modal.addEventListener('touchend', function (e) {
+            if (sx === null) return;
+            const t = e.changedTouches && e.changedTouches[0];
+            const dx = t ? t.clientX - sx : 0;
+            const dy = t ? t.clientY - sy : 0;
+            sx = null;
+            if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+                // 在播放视频上滑动可能是在拖进度条，不触发翻页
+                const target = e.target && e.target.closest ? e.target.closest('video') : null;
+                if (!target) window.App.navImage(dx < 0 ? 1 : -1);
+            }
+        }, { passive: true });
+    }
+
+    function openImageModal(ids, idx, postId) {
         Promise.all(ids.map(window.App.loadMediaUrl)).then(urls => {
-            window.App.modalData = { images: urls.filter(Boolean), currentIndex: idx };
+            const entries = [];
+            ids.forEach((mid, i) => {
+                if (urls[i]) entries.push({ id: mid, url: urls[i] });
+            });
+            if (!entries.length) return;
+            window.App.modalData = {
+                entries: entries,
+                currentIndex: Math.max(0, Math.min(idx || 0, entries.length - 1)),
+                postId: postId || null
+            };
             updateImageModal();
+            bindModalSwipe();
             document.querySelector('#imageModal').style.display = 'flex';
         });
     }
 
     function updateImageModal() {
         if (!window.App.modalData) return;
-        document.querySelector('#imageModalImg').src = window.App.modalData.images[window.App.modalData.currentIndex] || '';
-        document.querySelector('#imageModalCounter').textContent = `${window.App.modalData.currentIndex + 1}/${window.App.modalData.images.length}`;
+        const e = window.App.modalData.entries[window.App.modalData.currentIndex];
+        if (!e) return;
+        document.querySelector('#imageModalImg').src = e.url;
+        document.querySelector('#imageModalCounter').textContent = `${window.App.modalData.currentIndex + 1}/${window.App.modalData.entries.length}`;
         document.querySelector('#imageModalPrev').style.display = window.App.modalData.currentIndex > 0 ? '' : 'none';
-        document.querySelector('#imageModalNext').style.display = window.App.modalData.currentIndex < window.App.modalData.images.length - 1 ? '' : 'none';
+        document.querySelector('#imageModalNext').style.display = window.App.modalData.currentIndex < window.App.modalData.entries.length - 1 ? '' : 'none';
+        // 当前是 Live 封面：点封面可重播；进入/翻到该页时自动播放一遍（放完回到封面）
+        clearModalLiveVideo();
+        const clip = currentModalLiveClip();
+        const imgEl = document.querySelector('#imageModalImg');
+        if (imgEl) imgEl.onclick = null;
+        if (clip) {
+            if (imgEl) {
+                imgEl.onclick = function () { clearModalLiveVideo(); playModalLiveClip(clip); };
+            }
+            playModalLiveClip(clip);
+        }
     }
 
     function closeImageModal() {
+        clearModalLiveVideo();
         document.querySelector('#imageModal').style.display = 'none';
         window.App.modalData = null;
     }
@@ -422,7 +555,7 @@
     function navImage(dir) {
         if (window.App.modalData) {
             const n = window.App.modalData.currentIndex + dir;
-            if (n >= 0 && n < window.App.modalData.images.length) {
+            if (n >= 0 && n < window.App.modalData.entries.length) {
                 window.App.modalData.currentIndex = n;
                 updateImageModal();
             }
@@ -446,21 +579,36 @@
     }
 
     let activeProgressToast = null;
+    let progressBarEl = null;
 
     function showProgress(msg) {
         if (!activeProgressToast) {
             activeProgressToast = document.createElement('div');
-            activeProgressToast.className = 'toast';
-            activeProgressToast.style.animation = 'none';  // 阻止自动消失动画
+            activeProgressToast.className = 'toast toast-progress';
+            activeProgressToast.style.animation = 'none';
+            activeProgressToast.innerHTML = '<span class="toast-progress-text"></span><div class="toast-progress-track"><div class="toast-progress-bar"></div></div>';
+            progressBarEl = activeProgressToast.querySelector('.toast-progress-bar');
             document.body.appendChild(activeProgressToast);
         }
-        activeProgressToast.textContent = msg;
+        activeProgressToast.querySelector('.toast-progress-text').textContent = msg;
+    }
+
+    function showUploadProgress(loaded, total) {
+        const pct = Math.min(Math.round(loaded / total * 100), 100);
+        if (!activeProgressToast) {
+            showProgress('☁️ 上传中 0%');
+        }
+        activeProgressToast.querySelector('.toast-progress-text').textContent = `☁️ 上传中 ${pct}%`;
+        if (progressBarEl) {
+            progressBarEl.style.width = pct + '%';
+        }
     }
 
     function hideProgress() {
         if (activeProgressToast) {
             activeProgressToast.remove();
             activeProgressToast = null;
+            progressBarEl = null;
         }
     }
 
@@ -479,6 +627,7 @@
     window.App.showToast = showToast;
     window.App.showToastBottom = showToastBottom;
     window.App.showProgress = showProgress;
+    window.App.showUploadProgress = showUploadProgress;
     window.App.hideProgress = hideProgress;
     window.App.modalData = null;
 })();

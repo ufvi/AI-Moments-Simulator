@@ -137,10 +137,8 @@
 
                 const aiName = aiAcc.nickname || 'AI助手';
                 const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
-                let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设。请为朋友圈生成一条简短的评论。直接给出评论内容，不要在评论前加上名字。**请使用 Markdown 格式排版**，以获得更好的呈现效果。`;
-                const activeStyle = aiAcc.style || '';
-                if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
-                systemPrompt += ` 另外请在评论末尾附一个JSON表示你是否要点赞这条帖子：{"shouldLike":true} 或 {"shouldLike":false}。`;
+                let systemPrompt = `好的，现在你是"${aiName}"了，${basePrompt}你正在为朋友圈写一条简短的评论。直接给出评论内容，不要在评论前加上名字。你**使用 Markdown 格式排版**，以获得更好的呈现效果。`;
+                systemPrompt += ` 另外在评论末尾你会附一个JSON表示你是否要点赞这条帖子：{"shouldLike":true} 或 {"shouldLike":false}。`;
 
                 const author = window.App.getAcc(post.userId)?.nickname || '用户';
                 const timeDesc = window.App.formatTime(post.timestamp);
@@ -345,13 +343,11 @@
         // ===== 1. 构建强身份系统提示词 =====
         const aiName = selectedAIAcc?.nickname || 'AI助手';
         const basePrompt = selectedAIAcc?.systemPrompt || '你是一个友善的朋友';
-        const fixedSuffix = '请为朋友圈生成一条简短的评论。';
-        let systemPrompt = `你是"${aiName}"，${basePrompt}。你需要严格遵守你的独立人设，不要将其他用户的评论当成你的发言。${fixedSuffix}`;
-        systemPrompt += `直接给出评论内容，不要在评论前加上"${aiName}："或类似称呼。`;
-        systemPrompt += `\n\n**请使用 Markdown 格式排版**，以获得更好的呈现效果。`;
-        const activeStyle = selectedAIAcc?.style || '';
-        if (activeStyle) systemPrompt += ` 你的评论风格要：${activeStyle}。`;
-        systemPrompt += ` 另外请在评论末尾附一个JSON表示你是否要点赞这条帖子：{"shouldLike":true} 或 {"shouldLike":false}。`;
+        const fixedSuffix = '你正在给朋友圈写一条简短的评论。';
+        let systemPrompt = `好的，现在你是"${aiName}"了，${basePrompt} ${fixedSuffix}`;
+        systemPrompt += `直接给出评论内容 `;
+        systemPrompt += `你会\n\n**使用 Markdown 格式排版**，以获得更好的呈现效果。`;
+        systemPrompt += ` 另外你会在评论末尾附一个JSON表示你是否要点赞这条帖子：{"shouldLike":true} 或 {"shouldLike":false}。`;
 
         const isVolcengine = /volces\.com/i.test(window.App.aiConfig.endpoint);
         const messages = [{ role: 'system', content: systemPrompt }];
@@ -371,8 +367,8 @@
             contentDesc += ` 分享了${parts.join('和')}。`;
         }
         contentDesc += isSelfPost
-            ? ' 这是你自己的帖子，请以作者身份补充一句回应评论区的话，或者分享一点后续感受。'
-            : ' 请以你的身份写一条简短的评论。';
+            ? ' 这是你自己的帖子，你要以作者身份补充一句回应评论区的话，或者分享一点后续感受。'
+            : ' 你正在以你的身份写一条简短的评论。';
         const likedNames = (post.likes || []).filter(uid => uid !== selectedAIId).map(uid => window.App.getAcc(uid)?.nickname || '未知').join('、');
         if (isSelfPost && likedNames) contentDesc += `\n\n当前已有点赞：${likedNames}。`;
 
@@ -406,7 +402,7 @@
             }
             if (myComments.length) {
                 const myText = myComments.map(c => c.text).join('、');
-                extraLines.push(`你已经评论过："${myText}"，请生成一条新评论。`);
+                extraLines.push(`你已经评论过："${myText}"，你想写一条新评论。`);
             }
             if (extraLines.length) {
                 const extra = '\n\n' + extraLines.join('\n');
@@ -1014,11 +1010,8 @@
             // ── 第二次：并发生成 N 条帖子 ────────────────────────
             const aiName = aiAcc.nickname || 'AI';
             const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
-            const style = aiAcc.style ? ` 风格要求：${aiAcc.style}。` : '';
             const makePostMessages = () => ([
-                { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半。直接输出正文。
-
-**使用 Markdown 格式排版**，以获得更好的呈现效果。` },
+                { role: 'system', content: `好的，现在你是"${aiName}"了，${basePrompt}你刚刚经历了给定情境，打算写一条朋友圈，语气自然化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半。直接输出正文。**使用 Markdown 格式排版**，以获得更好的呈现效果。` },
                 { role: 'user', content: `情境：${situation}` }
             ]);
 
@@ -1245,7 +1238,6 @@
                             <input type="checkbox" value="${a.id}"
                                 style="width:15px;height:15px;flex-shrink:0;cursor:pointer;accent-color:var(--accent);">
                             <span style="white-space:nowrap;flex-shrink:0;">${window.App.escapeHtml(a.nickname)}</span>
-                            ${a.style ? `<span style="font-size:11px;color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.App.escapeHtml(a.style)}</span>` : ''}
                         </label>`).join('')}
                 </div>
                 <div class="btn-row" style="margin-top:16px;">
@@ -1346,11 +1338,8 @@
                 aiAccounts.map(aiAcc => {
                     const aiName = aiAcc.nickname || 'AI';
                     const basePrompt = aiAcc.systemPrompt || '你是一个友善的朋友';
-                    const style = aiAcc.style ? ` 风格要求：${aiAcc.style}。` : '';
                     const msgs = [
-                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半。直接输出正文。
-
-**请使用 Markdown 格式排版**，以获得更好的呈现效果。` },
+                        { role: 'system', content: `好的，现在你是"${aiName}"了，${basePrompt}你刚刚经历了给定情境，打算写一条朋友圈，语气自然化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半。直接输出正文。**请使用 Markdown 格式排版**，以获得更好的呈现效果。` },
                         { role: 'user', content: `情境：${ghostInput}` }
                     ];
                     return callAPI(msgs, 2000).then(text => ({ text, aiAcc }));
@@ -1373,11 +1362,8 @@
                 async (draft) => {
                     const aiName = draft.aiAcc.nickname || 'AI';
                     const basePrompt = draft.aiAcc.systemPrompt || '你是一个友善的朋友';
-                    const style = draft.aiAcc.style ? ` 风格要求：${draft.aiAcc.style}。` : '';
                     const msgs = [
-                        { role: 'system', content: `你是"${aiName}"，${basePrompt}。${style}请根据给定情境写一条朋友圈，语气自然化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看的暗语或纯情绪发泄。直接输出正文。
-
-**请使用 Markdown 格式排版**，以获得更好的呈现效果。` },
+                        { role: 'system', content: `好的，现在你是"${aiName}"了，${basePrompt}。你刚刚经历了给定情境，打算写一条朋友圈，语气自然化。注意：你的朋友圈读者完全不知道这个情境，所以正文需要包含一个"钩子"或基本背景，让不了解情况的朋友至少能猜到大半；禁止写只有你自己能看的暗语或纯情绪发泄。直接输出正文。**请使用 Markdown 格式排版**，以获得更好的呈现效果。` },
                         { role: 'user', content: `情境：${ghostInput}` }
                     ];
                     return await callAPI(msgs, 2000);
@@ -1428,6 +1414,8 @@
     function prefillGhostBox(realUser, aiAcc, text, ghostInput) {
         const $pt = document.querySelector('#publishText');
         if (!$pt) return;
+        // 进入代写编辑前，先暂存发布框里正在写的内容
+        if (window.App.stashPreEdit) window.App.stashPreEdit();
         $pt.value = text;
         window.App.publishFiles = [];
         window.App.editingPostId = null;
@@ -1440,6 +1428,8 @@
         if ($cancel) $cancel.style.display = '';
         window.App.renderPublishPreview && window.App.renderPublishPreview();
         window.App.updatePublishBtn && window.App.updatePublishBtn();
+        // 立即暂存草稿（含代写身份信息），刷新/崩溃后也能恢复继续编辑
+        window.App.autosaveDraft && window.App.autosaveDraft(true);
         $pt.focus();
         window.scrollTo({ top: 0, behavior: 'smooth' });
         window.App.showToast('✏️ 修改满意后点击发布');
@@ -1449,6 +1439,8 @@
     function prefillPublishBox(aiAcc, text) {
         const $pt = document.querySelector('#publishText');
         if (!$pt) return;
+        // 进入AI发帖编辑前，先暂存发布框里正在写的内容
+        if (window.App.stashPreEdit) window.App.stashPreEdit();
         $pt.value = text;
         window.App.publishFiles = [];
         window.App.editingPostId = null;
@@ -1460,6 +1452,8 @@
         if ($cancel) $cancel.style.display = '';
         window.App.renderPublishPreview();
         window.App.updatePublishBtn();
+        // 立即暂存草稿（含AI发布身份信息），刷新/崩溃后也能恢复继续编辑
+        window.App.autosaveDraft && window.App.autosaveDraft(true);
         $pt.focus();
         window.scrollTo({ top: 0, behavior: 'smooth' });
         window.App.showToast('✏️ 修改满意后点击发布，将以AI身份发出');
@@ -1576,10 +1570,7 @@
         var picked = aiAccounts[Math.floor(Math.random() * aiAccounts.length)];
         var aiName = picked.nickname || 'AI';
         var basePrompt = picked.systemPrompt || '你是一个有智慧的朋友';
-        var style = picked.style ? ' 风格要求：' + picked.style + '。' : '';
-
-        var systemPrompt = '你是"' + aiName + '"，' + basePrompt + '。' + style +
-            '请生成一句人生感悟或哲理语录，50字以内。要求：输出纯文字，不要加引号，不要加破折号，不要加任何前缀或署名，只输出语录正文本身。';
+        var systemPrompt = '你是"' + aiName + '"，' + basePrompt + '。请生成一句人生感悟或哲理语录，50字以内。要求：输出纯文字，不要加引号，不要加破折号，不要加任何前缀或署名，只输出语录正文本身。';
 
         var base = window.App.aiConfig.endpoint.replace(/\/+$/, '');
         var _isVolcQ = /volces\.com/i.test(window.App.aiConfig.endpoint);

@@ -1102,6 +1102,171 @@ strong, b {
     border-radius: 8px;
 }
 
+/* 媒体上传失败提示 + 重传按钮 */
+.post-upload-warn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(255, 193, 7, 0.12);
+    border: 1px solid rgba(255, 193, 7, 0.45);
+    color: #b8860b;
+    font-size: 12px;
+    width: fit-content;
+}
+.post-upload-warn button {
+    padding: 3px 10px;
+    font-size: 12px;
+    border-radius: 12px;
+    border: none;
+    background: var(--accent, #7c5cfc);
+    color: #fff;
+    cursor: pointer;
+    font-weight: 600;
+}
+.post-upload-warn button:disabled {
+    opacity: .6;
+    cursor: default;
+}
+.dark-mode .post-upload-warn {
+    color: #ffd166;
+}
+
+/* ═══ Live 动图卡片（封面照 + 有声短片，点按播放）═══ */
+.live-media {
+    position: relative;
+    margin-top: 8px;
+    max-width: 260px;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--input-bg);
+    line-height: 0;
+}
+.live-media .post-image-wrapper {
+    border-radius: 8px;
+    background: transparent;
+}
+.live-media .post-image-wrapper img {
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: contain;
+    display: block;
+}
+.live-badge {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 2px 7px;
+    border-radius: 8px;
+    pointer-events: none;
+    backdrop-filter: blur(2px);
+}
+/* 封面角落的播放按钮：点击播放；视频放完自动回到封面，可再次点击播放 */
+.live-replay-btn {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7c5cfc, #c77dff);
+    color: #fff;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-left: 3px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    z-index: 3;
+    transition: transform .15s;
+}
+.live-media:hover .live-replay-btn {
+    transform: scale(1.12);
+}
+.live-player-wrap {
+    position: relative;
+    line-height: 0;
+}
+.live-player {
+    width: 100%;
+    max-height: 400px;
+    display: block;
+    border-radius: 8px;
+    background: #000;
+}
+.live-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 13px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+/* Live 封面与普通图混排（网格格内 ▶ 芯片） */
+.live-grid-cell {
+    position: relative;
+}
+.live-grid-chip {
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    pointer-events: none;
+    backdrop-filter: blur(2px);
+    z-index: 3;
+}
+
+/* 大图预览（图片弹窗）内：Live 封面自动播放的视频 */
+#imageModal .image-modal-live-video {
+    max-width: 90vw;
+    max-height: 85vh;
+    border-radius: 4px;
+    background: #000;
+    display: block;
+    margin: auto;
+}
+
+/* 弹窗控制按钮要始终压在视频上层，否则播放时点不到上一张/下一张 */
+#imageModalClose,
+#imageModalPrev,
+#imageModalNext,
+#imageModalCounter {
+    z-index: 10;
+}
+
+/* 图片大图预览：允许触摸滑动翻页，横向手势不触发浏览器返回 */
+#imageModal {
+    touch-action: pan-y;
+    overscroll-behavior: none;
+}
+
 /* SVG 图标通用尺寸 */
 .icon-svg {
     display: inline-block;

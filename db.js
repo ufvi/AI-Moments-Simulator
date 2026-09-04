@@ -69,8 +69,113 @@
     }
     // ----------------------------------------
 
+    const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024;
+
+    // ── 媒体云端上传跟踪 ──
+    // 上传失败不丢数据：blob 已在 IndexedDB 落盘，把 mediaId 记入“待补传”清单，
+    // 下次打开页面/下次发布/手动上传时自动补传，成功后移除。
+    const _inflightUploads = new Set();
+    let _pendingMediaCache = null;
+
+    function pendingMediaKey() { return window.App.NS + 'pending_media'; }
+    function loadPendingMedia() {
+        try { return JSON.parse(localStorage.getItem(pendingMediaKey()) || '[]'); } catch (e) { return []; }
+    }
+    function savePendingMedia(arr) {
+        try { localStorage.setItem(pendingMediaKey(), JSON.stringify(arr)); } catch (e) { }
+    }
+    function _readPending() {
+        if (!_pendingMediaCache) _pendingMediaCache = loadPendingMedia();
+        return _pendingMediaCache;
+    }
+    function _writePending() { savePendingMedia(_pendingMediaCache); }
+    function addPendingMedia(id) {
+        const arr = _readPending();
+        if (arr.indexOf(id) === -1) { arr.push(id); _writePending(); }
+    }
+    function removePendingMedia(id) {
+        const arr = _readPending();
+        const i = arr.indexOf(id);
+        if (i !== -1) { arr.splice(i, 1); _writePending(); }
+    }
+    function getPendingMediaIds() { return _readPending().slice(); }
+
+    // 失败原因记录（用于帖子提示条显示 HTTP/超时/网络等信息）
+    function _readMediaMeta() {
+        if (!_pendingMediaCache) _pendingMediaCache = loadPendingMedia(); // 保持读取顺序一致（占位，无副作用）
+        try { return JSON.parse(localStorage.getItem(window.App.NS + 'pending_media_meta') || '{}'); } catch (e) { return {}; }
+    }
+    function _writeMediaMeta(m) {
+        try { localStorage.setItem(window.App.NS + 'pending_media_meta', JSON.stringify(m)); } catch (e) { }
+    }
+    function noteMediaUploadFail(id) {
+        const m = _readMediaMeta();
+        const rec = m[id] || { tries: 0 };
+        rec.tries = (rec.tries || 0) + 1;
+        const e = window._fbLastMediaErr || {};
+        rec.kind = e.kind || 'unknown';
+        rec.http = e.http || null;
+        rec.detail = e.detail || null;
+        rec.at = Date.now();
+        m[id] = rec;
+        _writeMediaMeta(m);
+    }
+    function clearMediaMeta(id) {
+        const m = _readMediaMeta();
+        if (m[id]) { delete m[id]; _writeMediaMeta(m); }
+    }
+    function getPendingMediaMeta() { return _readMediaMeta(); }
+
+    // 等待当前所有在途媒体上传结束，返回每个结果的布尔数组（true=成功）
+    async function flushMediaUploads() {
+        const items = Array.from(_inflightUploads);
+        if (!items.length) return [];
+        const results = await Promise.all(items.map(p => p.then(v => !!v).catch(() => false)));
+        return results;
+    }
+
+    // 针对指定 id 列表补传媒体（失败的不移除，等待下次机会）；空列表 = 全部待补传
+    // 并发调用全部“排队”依次执行：手动点重传一定真正发请求，不会被后台自动重试挡住
+    let _retryChain = Promise.resolve();
+    async function _doRetryPendingMedia(ids) {
+        const list = ids ? ids.slice() : getPendingMediaIds();
+        if (!list.length || !window._fbUploadMedia) return 0;
+        let okCount = 0;
+        for (let i = 0; i < list.length; i++) {
+            const id = list[i];
+            try {
+                const rec = await getMedia(id);
+                if (!rec || !rec.blob) continue; // 本地已无 blob：交给下一次发布重建
+                const mimeType = rec.blob.type || (rec.type === 'video' ? 'video/mp4' : 'image/jpeg');
+                const isLarge = rec.blob.size > LARGE_FILE_THRESHOLD;
+                const url = await window._fbUploadMedia(id, rec.blob, mimeType, function () { });
+                if (url) {
+                    removePendingMedia(id);
+                    clearMediaMeta(id);
+                    okCount++;
+                    if (isLarge) console.log('☁️ 补传成功:', id);
+                } else {
+                    console.warn('☁️ 补传失败（稍后自动再试）:', id);
+                    noteMediaUploadFail(id);
+                }
+            } catch (e) {
+                console.warn('☁️ 补传异常:', id, e);
+            }
+        }
+        return okCount;
+    }
+    function retryPendingMedia(ids) {
+        const task = _retryChain.then(function () { return _doRetryPendingMedia(ids); });
+        _retryChain = task.catch(function () { });
+        return task;
+    }
+
+    // 把“待补传”清单里的所有媒体逐个补传
+    async function retryPendingMediaUploads() {
+        return retryPendingMedia(getPendingMediaIds());
+    }
+
     async function saveMedia(id, blob, type) {
-        // 本地IndexedDB存一份
         const db = await openDB();
         await new Promise((resolve, reject) => {
             const tx = db.transaction('media', 'readwrite');
@@ -78,12 +183,39 @@
             tx.oncomplete = resolve;
             tx.onerror = () => reject(tx.error);
         });
-        // 同时上传到Cloudflare Storage（后台进行，不阻塞发帖）
         if (window._fbUploadMedia) {
             const mimeType = blob.type || (type === 'image' ? 'image/jpeg' : 'video/mp4');
-            window._fbUploadMedia(id, blob, mimeType).then(url => {
-                if (url) console.log('☁️ 媒体已上传:', id);
+            const isLarge = blob.size > LARGE_FILE_THRESHOLD;
+            if (isLarge) {
+                window.App.showProgress('☁️ 上传中 0%');
+            }
+            const upPromise = window._fbUploadMedia(id, blob, mimeType, function (loaded, total) {
+                if (isLarge) {
+                    window.App.showUploadProgress(loaded, total);
+                }
+            }).then(function (url) {
+                if (url) {
+                    console.log('☁️ 媒体已上传:', id);
+                    removePendingMedia(id);
+                    clearMediaMeta(id);
+                    if (isLarge) window.App.hideProgress();
+                    return true;
+                }
+                console.warn('☁️ 媒体上传失败，已记入待补传:', id);
+                addPendingMedia(id);
+                noteMediaUploadFail(id);
+                if (isLarge) window.App.hideProgress();
+                return false;
+            }).catch(function (e) {
+                console.warn('☁️ 媒体上传异常，已记入待补传:', id, e);
+                addPendingMedia(id);
+                noteMediaUploadFail(id);
+                if (isLarge) window.App.hideProgress();
+                return false;
             });
+            _inflightUploads.add(upPromise);
+            upPromise.then(function () { _inflightUploads.delete(upPromise); });
+            upPromise.catch(function () { });
         }
     }
     async function getMedia(id) {
@@ -103,6 +235,9 @@
             tx.oncomplete = resolve;
             tx.onerror = () => reject(tx.error);
         });
+        // 如果它还在“待补传”清单里，一并移除（已删除就不需要补传了）
+        removePendingMedia(id);
+        clearMediaMeta(id);
         // 同时删除Storage里的文件
         if (window._fbDeleteMedia) window._fbDeleteMedia(id);
     }
@@ -226,6 +361,11 @@
     window.App.loadMediaUrl = loadMediaUrl;
     window.App.revokeMediaUrl = revokeMediaUrl;
     window.App.clearMediaCache = clearMediaCache;
+    window.App.flushMediaUploads = flushMediaUploads;
+    window.App.retryPendingMediaUploads = retryPendingMediaUploads;
+    window.App.retryPendingMedia = retryPendingMedia;
+    window.App.getPendingMediaIds = getPendingMediaIds;
+    window.App.getPendingMediaMeta = getPendingMediaMeta;
     window.App.lazyMediaObserver = lazyMediaObserver;
     window.App.autoBackup = autoBackup;
     window.App.restoreBackupIfNewer = restoreBackupIfNewer;

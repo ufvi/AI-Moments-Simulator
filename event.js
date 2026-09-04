@@ -55,6 +55,19 @@
             _localDataTs,
             !!force
         );
+        // 上传真正写盘成功后，把“最近一次本地同步”刷新到当下：
+        // 防止自己刚上传的实时回声晚于 2 秒保护窗到达时，把紧接着的本地新修改覆盖掉
+        if (result && result.skipped === false && !result.error && window._onLocalSync) {
+            window._onLocalSync();
+        }
+        // 数据上传失败：30 秒后自动重试一次（本地数据已落盘，不会丢）
+        if (result && result.error && !window._cloudRetryPending) {
+            window._cloudRetryPending = true;
+            setTimeout(function () {
+                window._cloudRetryPending = false;
+                try { window.App.uploadToCloud(false); } catch (e) { }
+            }, 30000);
+        }
         return result;
     }
     window.App.uploadToCloud = uploadToCloud;
@@ -1027,12 +1040,8 @@
         var imageInput = $('#imageInput');
         if (imageInput) {
             imageInput.onchange = function () {
-                var MAX_IMAGES = 50;
                 for (var i = 0; i < this.files.length; i++) {
-                    if (window.App.publishFiles.filter(function (m) { return m.type === 'image'; }).length >= MAX_IMAGES) {
-                        window.App.showToast('最多' + MAX_IMAGES + '图片'); break;
-                    }
-                    window.App.publishFiles.push({ type: 'image', file: this.files[i], previewUrl: URL.createObjectURL(this.files[i]) });
+                    window.App.addPublishFile(this.files[i], 'image');
                 }
                 window.App.renderPublishPreview();
                 window.App.updatePublishBtn();
@@ -1044,10 +1053,7 @@
         if (videoInput) {
             videoInput.onchange = function () {
                 var f = this.files[0]; if (!f) return;
-                if (window.App.publishFiles.some(function (m) { return m.type === 'video'; })) {
-                    window.App.showToast('已有视频'); return;
-                }
-                window.App.publishFiles.push({ type: 'video', file: f, previewUrl: URL.createObjectURL(f) });
+                window.App.addPublishFile(f, 'video');
                 window.App.renderPublishPreview();
                 window.App.updatePublishBtn();
                 this.value = '';
@@ -1074,24 +1080,18 @@
                 publishArea.classList.remove('drag-over');
                 var files = e.dataTransfer.files;
                 if (!files || !files.length) return;
-                var MAX_IMAGES = 50;
+                var accepted = 0;
                 for (var i = 0; i < files.length; i++) {
                     var f = files[i];
                     if (f.type.indexOf('image/') === 0) {
-                        if (window.App.publishFiles.filter(function (m) { return m.type === 'image'; }).length >= MAX_IMAGES) {
-                            window.App.showToast('最多' + MAX_IMAGES + '图片'); break;
-                        }
-                        window.App.publishFiles.push({ type: 'image', file: f, previewUrl: URL.createObjectURL(f) });
+                        if (window.App.addPublishFile(f, 'image')) accepted++;
                     } else if (f.type.indexOf('video/') === 0) {
-                        if (window.App.publishFiles.some(function (m) { return m.type === 'video'; })) {
-                            window.App.showToast('已有视频'); continue;
-                        }
-                        window.App.publishFiles.push({ type: 'video', file: f, previewUrl: URL.createObjectURL(f) });
+                        if (window.App.addPublishFile(f, 'video')) accepted++;
                     }
                 }
                 window.App.renderPublishPreview();
                 window.App.updatePublishBtn();
-                window.App.showToast('📥 已拖入文件');
+                if (accepted) window.App.showToast('📥 已拖入文件');
             });
         }
 
@@ -1101,20 +1101,17 @@
             publishText.addEventListener('paste', function (e) {
                 var items = e.clipboardData && e.clipboardData.items;
                 if (!items) return;
-                var MAX_IMAGES = 50;
                 var hasImage = false;
                 for (var i = 0; i < items.length; i++) {
                     if (items[i].type.indexOf('image/') === 0) {
                         e.preventDefault();
                         var file = items[i].getAsFile();
                         if (!file) continue;
-                        if (window.App.publishFiles.filter(function (m) { return m.type === 'image'; }).length >= MAX_IMAGES) {
-                            window.App.showToast('最多' + MAX_IMAGES + '图片'); break;
+                        if (window.App.addPublishFile(file, 'image')) {
+                            window.App.renderPublishPreview();
+                            window.App.updatePublishBtn();
+                            hasImage = true;
                         }
-                        window.App.publishFiles.push({ type: 'image', file: file, previewUrl: URL.createObjectURL(file) });
-                        window.App.renderPublishPreview();
-                        window.App.updatePublishBtn();
-                        hasImage = true;
                     }
                 }
                 if (hasImage) window.App.showToast('📋 已粘贴图片');
@@ -1482,6 +1479,8 @@
 
         // Step 2: 先渲染本地数据（用户立即看到内容）
         renderUI();
+        // 本地数据就绪：检查是否有可恢复的草稿/发布快照
+        try { if (window.App.onLocalDataReady) window.App.onLocalDataReady(); } catch (e) { }
 
         // Step 3: 异步加载云端数据（云端优先，拉下来覆盖本地）
         loadCloudflareInBackground();
@@ -1497,6 +1496,8 @@
         var lastSyncTs = 0;
         window._onLocalSync = function () { lastSyncTs = Date.now(); };
         var initDone = false;
+        // 云端初载快照比本地旧（本地在加载期间已有新写入）时置 true，结束时把本地补传到云端
+        var cloudStale = false;
         setTimeout(function () { initDone = true; }, 4000);
 
         try {
@@ -1520,6 +1521,15 @@
                                 _localDataTs = cloudTs;
                                 localStorage.setItem(window.App.NS + '_localDataTs', String(cloudTs));
                             }
+
+                            // ⚠️ 关键保护：云端数据在加载期间，用户可能已经抢先发布/编辑了内容
+                            //（此时上传仍被 _cloudLoadDone 锁住，新内容只写进了本地）。
+                            // 若云端时间戳比本地旧还强行用云端旧快照覆盖本地，
+                            // 刚发布/编辑的内容会被当场冲掉（表现为“点发布后内容丢失”）。
+                            if (cloudTs > 0 && _localDataTs > cloudTs) {
+                                cloudStale = true;
+                                console.log('⏭️ 云端初载快照比本地旧，保留本地数据（避免覆盖加载期间刚发布/编辑的内容）');
+                            } else {
 
                             window.App.accounts = cloudData.accounts;
                             window.App.posts = cloudData.posts;
@@ -1561,6 +1571,7 @@
                             }
 
                             window.App.showToast('✅ 已加载云端数据');
+                            }
                         }
                     }
                 }
@@ -1571,12 +1582,23 @@
         _cloudLoadDone = true;
         console.log('✅ 云端加载阶段结束，上传保护已解除');
 
+        // 云端初载快照比本地旧（例如加载期间用户已抢先发布/编辑，上传被锁没有执行）
+        // → 此时把本地最新数据补传到云端，修复两边的分歧，避免内容留在本地却不再同步
+        if (cloudStale && window.App.accounts && window.App.accounts.length) {
+            try { await window.App.uploadToCloud(false); } catch (e) { }
+        }
+
+        // 云端数据最终状态已确定：刷新草稿/发布丢失恢复条（此时判断“帖子是否存在”最准确）
+        try { if (window.App.onCloudInitDone) window.App.onCloudInitDone(); } catch (e) { }
+
         // ── 实时监听：仅拉取，不回推 ──
         if (window._fbListenChanges) {
             window._fbListenChanges(
                 function (cloudAccounts) {
                     // 忽略自己刚上传触发的回调（防循环）
                     if (!initDone || Date.now() - lastSyncTs < 2000) return;
+                    // 发布处理中不整体替换，避免打断进行中的保存
+                    if (window.App._publishing) return;
                     window.App.accounts = Array.isArray(cloudAccounts) ? cloudAccounts : Object.values(cloudAccounts);
                     sortAccounts();
                     window.App.saveAppData(window.App.KEY_ACC, window.App.accounts);
@@ -1586,6 +1608,8 @@
                 },
                 function (cloudPosts) {
                     if (!initDone || Date.now() - lastSyncTs < 2000) return;
+                    // 发布处理中不整体替换 posts，避免云端旧快照冲掉刚发布的内容
+                    if (window.App._publishing) return;
                     var rawPosts = Array.isArray(cloudPosts) ? cloudPosts : Object.values(cloudPosts);
                     window.App.posts = rawPosts.map(function (p) {
                         if (!p) return p;
