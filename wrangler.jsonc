@@ -1,0 +1,18 @@
+{
+  // Pages Functions（Workers 运行时）绑定配置
+  // 说明：新版 Pages 运行时的绑定来源于本文件，页面“绑定”表仅供参考。
+  // KV 部分当前数据走 Firebase 未使用；如需启用，把下面 kv_namespaces 取消注释并填入命名空间 ID。
+  "name": "new-moment",
+  "pages_build_output_dir": ".",
+  "compatibility_date": "2026-04-28",
+  "r2_buckets": [
+    {
+      "binding": "MOMENTS_R2",
+      "bucket_name": "moments-media"
+    }
+  ]
+  // ,
+  // "kv_namespaces": [
+  //   { "binding": "MOMENTS_KV", "id": "在此粘贴 KV 命名空间 ID" }
+  // ]
+}
