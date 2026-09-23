@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据找回工具</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            margin: 0; padding: 14px 14px 40px; background: #f5f6f8; color: #222;
+            font-size: 14px; line-height: 1.5;
+        }
+        h1 { font-size: 18px; margin: 0 0 6px; }
+        .hint { color: #666; font-size: 12px; margin: 0 0 12px; }
+        .hint b { color: #c0392b; }
+        .box { background: #fff; border: 1px solid #e3e6ea; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+        label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; }
+        input[type=text] {
+            width: 100%; padding: 8px 10px; border: 1.5px solid #dfe3e8; border-radius: 8px;
+            font-size: 14px; margin-bottom: 8px; background: #fafbfc;
+        }
+        button {
+            padding: 8px 14px; border: none; border-radius: 8px; background: #7c5cfc; color: #fff;
+            font-size: 14px; font-weight: 600; cursor: pointer; margin: 0 8px 8px 0;
+        }
+        button.sec { background: #eceef2; color: #333; }
+        button.sm { padding: 4px 10px; font-size: 12px; font-weight: 500; margin: 0 6px 0 0; }
+        #status { font-size: 13px; color: #555; margin: 8px 0; white-space: pre-wrap; }
+        .lost { border-left: 4px solid #e74c3c; }
+        .card { background: #fff; border: 1px solid #e3e6ea; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+        .meta { font-size: 11px; color: #888; margin-bottom: 4px; word-break: break-all; }
+        .text { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+        .sec-title { font-size: 15px; font-weight: 700; margin: 16px 0 8px; }
+        .tag { display: inline-block; background: #ffecec; color: #c0392b; border-radius: 4px; padding: 0 5px; font-size: 11px; margin-left: 4px; }
+        .ok { color: #27ae60; }
+    </style>
+</head>
+
+<body>
+    <h1>🔍 数据找回工具</h1>
+    <p class="hint">
+        本页只<b>读取</b>本机浏览器里的数据（不修改、不上传）。请在<b>丢数据的那台手机上</b>用同一个浏览器打开本页。<br>
+        ⚠️ 打开本页前不要刷新 App 页面、不要清理浏览器数据，以免残留被清掉。
+    </p>
+
+    <div class="box">
+        <label>命名空间（App 网址里的 ?ns= 值，留空则只扫本机、不查云端）</label>
+        <input type="text" id="ns" placeholder="例如 ufvi">
+        <label>关键词（可留空；用于筛选结果，多个关键词用空格分隔）</label>
+        <input type="text" id="kw" placeholder="例如 吃饭 今天">
+        <button id="scan">开始扫描</button>
+        <button id="copyAll" class="sec">复制全部结果</button>
+        <button id="download" class="sec">下载 JSON</button>
+        <div id="status"></div>
+    </div>
+
+    <div id="lost"></div>
+    <div id="results"></div>
+
+    <script>
+        (function () {
+            var $ = function (s) { return document.querySelector(s); };
+            var all = [];       // 所有扫描到的文本条目
+            var currentIds = {}; // 当前 posts 里已有的 id（用于识别“丢失”）
+            var currentTexts = {}; // 当前 posts 里的文本
+            var scanned = false;
+
+            function normText(t) { return (t || '').replace(/\s+/g, ' ').trim(); }
+
+            function fmtTime(ts) {
+                if (!ts) return '';
+                var n = Number(ts);
+                if (!n || isNaN(n)) return String(ts);
+                if (n < 1e12) n *= 1000;
+                var d = new Date(n);
+                if (isNaN(d.getTime())) return String(ts);
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') +
+                    ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+            }
+
+            // 递归收集对象/数组里所有带 text 的条目
+            function collect(node, source, depth) {
+                if (node == null || depth > 7) return;
+                if (typeof node === 'string') return;
+                if (Array.isArray(node)) {
+                    for (var i = 0; i < node.length; i++) collect(node[i], source, depth + 1);
+                    return;
+                }
+                if (typeof node !== 'object') return;
+                if (typeof node.text === 'string' && node.text.trim()) {
+                    var id = String(node.id || node.postId || '');
+                    var ts = node.timestamp || node.ptime || node.ts || node.savedAt || node.createdAt || 0;
+                    all.push({
+                        source: source,
+                        id: id,
+                        ts: ts,
+                        text: node.text,
+                        images: (node.images || []).length || 0,
+                        videos: (node.videos || []).length || 0,
+                        raw: node
+                    });
+                }
+                for (var k in node) {
+                    if (k === 'text' || k === 'avatar' || k === 'blob' || k === 'apiKey') continue;
+                    try { collect(node[k], source + '.' + k, depth + 1); } catch (e) { }
+                }
+            }
+
+            // 登记“当前动态”（用于识别哪些内容是丢失的）
+            function registerCurrent(posts) {
+                if (!Array.isArray(posts)) return;
+                for (var i = 0; i < posts.length; i++) {
+                    var p = posts[i];
+                    if (!p || typeof p !== 'object') continue;
+                    if (p.id) currentIds[String(p.id)] = 1;
+                    if (typeof p.text === 'string') currentTexts[normText(p.text)] = 1;
+                }
+            }
+
+            // 帖子/快照的形状（评论等不算，避免误报“丢失”）
+            function looksLikePost(raw) {
+                return raw && typeof raw === 'object' && !Array.isArray(raw) && (
+                    raw.timestamp !== undefined || raw.ptime !== undefined ||
+                    raw.images !== undefined || raw.videos !== undefined || raw.likes !== undefined
+                );
+            }
+
+            function walkLocalStorage() {
+                var keys = Object.keys(localStorage);
+                for (var i = 0; i < keys.length; i++) {
+                    var k = keys[i];
+                    var v;
+                    try { v = localStorage.getItem(k); } catch (e) { continue; }
+                    if (!v) continue;
+                    if (v.length < 2) continue;
+                    try {
+                        var obj = JSON.parse(v);
+                        collect(obj, 'localStorage:' + k, 0);
+                    } catch (e) {
+                        // 非 JSON：按纯文本记录（可能是直接存的文字）
+                        if (/[\u4e00-\u9fa5]/.test(v) && v.length < 20000) {
+                            all.push({ source: 'localStorage:' + k, id: '', ts: 0, text: v, images: 0, videos: 0, raw: v });
+                        }
+                    }
+                }
+                var sk = Object.keys(sessionStorage);
+                for (var j = 0; j < sk.length; j++) {
+                    var k2 = sk[j];
+                    try {
+                        var obj2 = JSON.parse(sessionStorage.getItem(k2));
+                        collect(obj2, 'sessionStorage:' + k2, 0);
+                    } catch (e2) { }
+                }
+            }
+
+            function readStore(db, name) {
+                return new Promise(function (resolve) {
+                    if (!db.objectStoreNames.contains(name)) { resolve(null); return; }
+                    try {
+                        var tx = db.transaction(name, 'readonly');
+                        var req = tx.objectStore(name).getAll();
+                        req.onsuccess = function () { resolve(req.result || []); };
+                        req.onerror = function () { resolve(null); };
+                    } catch (e) { resolve(null); }
+                });
+            }
+
+            function openDBByName(name) {
+                return new Promise(function (resolve) {
+                    try {
+                        var req = indexedDB.open(name);
+                        req.onsuccess = function () { resolve(req.result); };
+                        req.onerror = function () { resolve(null); };
+                        req.onblocked = function () { resolve(null); };
+                    } catch (e) { resolve(null); }
+                });
+            }
+
+            async function walkIndexedDB() {
+                var names = [];
+                try {
+                    if (indexedDB.databases) {
+                        var dbs = await indexedDB.databases();
+                        for (var i = 0; i < dbs.length; i++) if (dbs[i] && dbs[i].name) names.push(dbs[i].name);
+                    }
+                } catch (e) { }
+                if (names.indexOf('MomentsMediaDB') === -1) names.push('MomentsMediaDB');
+
+                for (var n = 0; n < names.length; n++) {
+                    var db = await openDBByName(names[n]);
+                    if (!db) continue;
+                    var stores = Array.prototype.slice.call(db.objectStoreNames);
+                    for (var s = 0; s < stores.length; s++) {
+                        if (stores[s] === 'media') continue; // 跳过媒体二进制
+                        var rows = await readStore(db, stores[s]);
+                        if (!rows) continue;
+                        for (var r = 0; r < rows.length; r++) {
+                            var rec = rows[r];
+                            var src = 'IDB:' + names[n] + '/' + stores[s] + (rec && rec.key ? (':' + rec.key) : '');
+                            if (stores[s] === 'appData' && rec && typeof rec.key === 'string' && /posts$/.test(rec.key)) {
+                                registerCurrent(rec.data);
+                            }
+                            collect(rec && rec.data !== undefined ? rec.data : rec, src, 0);
+                        }
+                    }
+                    try { db.close(); } catch (e) { }
+                }
+            }
+
+            async function walkCloud(ns) {
+                if (!ns) return;
+                try {
+                    var url = 'https://self-amused-moments-default-rtdb.firebaseio.com/' + encodeURIComponent(ns) + '.json';
+                    var res = await fetch(url);
+                    if (!res.ok) { status('☁️ 云端读取失败：HTTP ' + res.status); return; }
+                    var data = await res.json();
+                    if (data && data.posts) registerCurrent(data.posts);
+                    collect(data, 'cloud:' + ns, 0);
+                    status('☁️ 云端已读取');
+                } catch (e) {
+                    status('☁️ 云端读取失败（本机连不上 Firebase，属正常）：' + (e && e.message || e));
+                }
+            }
+
+            function status(msg) {
+                var el = $('#status');
+                el.textContent += (el.textContent ? '\n' : '') + msg;
+            }
+
+            function matchKeywords(e) {
+                var kw = $('#kw').value.trim().toLowerCase();
+                if (!kw) return true;
+                var text = (e.text || '').toLowerCase();
+                var parts = kw.split(/\s+/);
+                for (var i = 0; i < parts.length; i++) {
+                    if (text.indexOf(parts[i]) === -1) return false;
+                }
+                return true;
+            }
+
+            function esc(s) {
+                return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+                });
+            }
+
+            function isLost(e) {
+                if (!looksLikePost(e.raw)) return false;
+                if (e.id) return !currentIds[e.id];
+                return !currentTexts[normText(e.text)];
+            }
+
+            function cardHtml(e, lost) {
+                return '<div class="card' + (lost ? ' lost' : '') + '">' +
+                    '<div class="meta">' + (lost ? '<span class="tag">疑似丢失</span> ' : '') +
+                    esc(e.source) + (e.ts ? ' · ' + esc(fmtTime(e.ts)) : '') +
+                    (e.id ? ' · id=' + esc(e.id) : '') +
+                    (e.images ? ' · 图片' + e.images : '') + (e.videos ? ' · 视频' + e.videos : '') + '</div>' +
+                    '<div class="text">' + esc(e.text) + '</div>' +
+                    '<div style="margin-top:6px;">' +
+                    '<button class="sm" data-copy="' + esc(e.id || e.source) + '">复制文字</button>' +
+                    '</div></div>';
+            }
+
+            function render() {
+                var lostHtml = '';
+                var listHtml = '';
+                var lostCount = 0, listCount = 0;
+                var seen = {};
+                for (var i = 0; i < all.length; i++) {
+                    var e = all[i];
+                    if (!matchKeywords(e)) continue;
+                    var key = normText(e.text) + '|' + e.source;
+                    if (seen[key]) continue;
+                    seen[key] = 1;
+                    if (isLost(e)) { if (lostCount < 200) lostHtml += cardHtml(e, true); lostCount++; }
+                    else { if (listCount < 200) listHtml += cardHtml(e, false); listCount++; }
+                }
+                $('#lost').innerHTML = (lostCount ? '<div class="sec-title">🚨 疑似丢失（本机有、当前动态里没有）</div>' + lostHtml : '');
+                $('#results').innerHTML = '<div class="sec-title">📄 全部匹配结果</div>' + (listHtml || '<div class="card">没有匹配的内容</div>');
+
+                var btns = document.querySelectorAll('[data-copy]');
+                for (var b = 0; b < btns.length; b++) {
+                    btns[b].onclick = (function (btn) {
+                        return function () {
+                            var id = btn.getAttribute('data-copy');
+                            for (var j = 0; j < all.length; j++) {
+                                if ((all[j].id || all[j].source) === id) {
+                                    copyText(all[j].text);
+                                    return;
+                                }
+                            }
+                        };
+                    })(btns[b]);
+                }
+            }
+
+            function copyText(t) {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(t).then(function () { status('📋 已复制'); }, function () { fallbackCopy(t); });
+                } else { fallbackCopy(t); }
+            }
+            function fallbackCopy(t) {
+                var ta = document.createElement('textarea');
+                ta.value = t;
+                ta.style.position = 'fixed'; ta.style.left = '-9999px';
+                document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); status('📋 已复制'); } catch (e) { }
+                document.body.removeChild(ta);
+            }
+
+            async function scan() {
+                all = []; currentIds = {}; currentTexts = {};
+                $('#status').textContent = '';
+                $('#lost').innerHTML = '';
+                $('#results').innerHTML = '';
+                status('⏳ 正在扫描本机数据...');
+                try { walkLocalStorage(); } catch (e) { status('localStorage 扫描出错：' + e.message); }
+                try { await walkIndexedDB(); } catch (e) { status('IndexedDB 扫描出错：' + e.message); }
+                var ns = $('#ns').value.trim();
+                if (ns) { await walkCloud(ns); }
+                scanned = true;
+                status('✅ 扫描完成，共找到 ' + all.length + ' 条文本');
+                render();
+            }
+
+            $('#scan').onclick = scan;
+            $('#kw').addEventListener('input', function () { if (scanned) render(); });
+            $('#copyAll').onclick = function () {
+                var out = [];
+                for (var i = 0; i < all.length; i++) {
+                    if (matchKeywords(all[i])) out.push(all[i].text);
+                }
+                copyText(out.join('\n\n----------\n\n'));
+            };
+            $('#download').onclick = function () {
+                var clean = all.map(function (e) {
+                    return { source: e.source, id: e.id, ts: e.ts, text: e.text, images: e.images, videos: e.videos };
+                });
+                var blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'recover-scan-' + Date.now() + '.json';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            var nsParam = new URLSearchParams(location.search).get('ns');
+            if (nsParam) $('#ns').value = nsParam;
+        })();
+    </script>
+</body>
+
+</html>

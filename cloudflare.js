@@ -94,6 +94,7 @@ window._fbSyncWithTimestampCheck = async function (accounts, posts, localTs, for
 
 window._fbLoadData = async function () {
     try {
+        window._fbLoadError = null;
         console.log('📡 开始从Firebase读取数据...');
         const snap = await get(ref(db, NAMESPACE));
         console.log('📡 snap.exists():', snap.exists());
@@ -105,6 +106,7 @@ window._fbLoadData = async function () {
             console.warn('📡 Firebase里没有数据');
         }
     } catch (e) {
+        window._fbLoadError = e;
         console.warn('📡 Firebase load failed:', e);
     }
     return null;
@@ -133,6 +135,15 @@ window._fbListenChanges = function (onAccountsChange, onPostsChange) {
     onValue(ref(db, `${NAMESPACE}/posts`), snap => {
         if (snap.exists()) onPostsChange(snap.val());
     });
+};
+
+// 连接状态监听（.info/connected），供 UI 显示“云端已断开/已恢复”提示
+window._fbOnConnection = function (cb) {
+    try {
+        onValue(ref(db, '.info/connected'), snap => cb(!!snap.val()));
+    } catch (e) {
+        console.warn('连接状态监听失败:', e);
+    }
 };
 
 window._fbSyncImmediate = async function (accounts, posts) {

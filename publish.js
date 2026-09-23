@@ -377,6 +377,9 @@
             if (upFailCount > 0) {
                 // 有媒体没传上云端：内容都在本地（含 IDB 里的图片），可点帖子下方的 [重传]
                 window.App.showToast('⚠️ 有 ' + upFailCount + ' 个媒体上传云端失败，可在帖子下方点重传');
+                if (window.App.setSyncStatus) {
+                    window.App.setSyncStatus('warn', '⚠️ 有媒体未同步到云端，可在帖子下方点「重传」', null);
+                }
             }
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
@@ -447,6 +450,7 @@
     // ════════════════════════════════════════════════════════════════
     var KEY_DRAFT = window.App.NS + 'draft_v1';
     var KEY_LAST_PUB = window.App.NS + 'last_pub_v1';
+    var KEY_PUB_BACKUP = window.App.NS + 'pub_backup_v1';
 
     function readJSONSafe(key) { try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
     function writeJSONSafe(key, obj) { try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) { } }
@@ -496,10 +500,9 @@
     function clearDraft() { clearTimeout(_draftTimer); removeKeySafe(KEY_DRAFT); }
     function getDraft() { return readJSONSafe(KEY_DRAFT); }
 
-    // 记录最近一次发布成功的快照（文本+媒体ID+身份+时间+Live配对），用于丢失找回
-    function recordLastPublished(post) {
-        if (!post) return;
-        writeJSONSafe(KEY_LAST_PUB, {
+    // 帖子 → 可序列化快照（本地快照与发布备份共用同一结构）
+    function snapshotOf(post) {
+        return {
             postId: post.id,
             text: post.text || '',
             images: post.images || [],
@@ -511,7 +514,40 @@
             livePairs: (post.livePairs || []).map(function (p) { return { cover: p.cover, clip: p.clip }; }),
             ptime: post.timestamp || Date.now(),
             ts: Date.now()
-        });
+        };
+    }
+
+    // 记录最近一次发布成功的快照（文本+媒体ID+身份+时间+Live配对），用于丢失找回
+    function recordLastPublished(post) {
+        if (!post) return;
+        writeJSONSafe(KEY_LAST_PUB, snapshotOf(post));
+        appendPublishBackup(post);
+    }
+
+    // ── 发布备份（本地留档，与同步机制完全隔离）──
+    // 每次发布/编辑都把帖子内容写进本机 localStorage（最多 100 条），
+    // 即使云端/同步出问题，也能从「发布备份」里恢复。
+    function appendPublishBackup(post) {
+        if (!post || !post.id) return;
+        try {
+            var list = getPublishBackups();
+            var entry = snapshotOf(post);
+            // 同 ID 覆盖（编辑后保留最新版本），最新的排最前
+            list = list.filter(function (e) { return e && e.postId !== entry.postId; });
+            list.unshift(entry);
+            if (list.length > 100) list = list.slice(0, 100);
+            try {
+                localStorage.setItem(KEY_PUB_BACKUP, JSON.stringify(list));
+            } catch (quotaErr) {
+                // 空间不足：砍掉一半旧备份再写一次，保证新备份一定留得下
+                list = list.slice(0, Math.max(1, Math.floor(list.length / 2)));
+                try { localStorage.setItem(KEY_PUB_BACKUP, JSON.stringify(list)); } catch (e2) { }
+            }
+        } catch (e) { }
+    }
+    function getPublishBackups() {
+        var list = readJSONSafe(KEY_PUB_BACKUP);
+        return Array.isArray(list) ? list : [];
     }
     function clearPublishedSnapshot(postId) {
         var s = readJSONSafe(KEY_LAST_PUB);
@@ -599,11 +635,10 @@
             restoreDraftIntoBox(d);
         });
     }
-    // 最近一次发布的动态疑似未同步 → 按新动态重新发布（媒体ID若还在即可恢复图片/视频）
-    function restoreLostPublish(snap) {
-        removeRestoreBar();
+    // 把快照按“新动态”重新发布（丢失找回 / 从备份恢复共用）
+    function republishSnapshot(snap, toastMsg) {
         var newPost = {
-            id: 'post_r_' + Date.now(),
+            id: 'post_r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
             userId: snap.userId || window.App.currentId,
             text: snap.text || '',
             images: snap.images || [],
@@ -626,6 +661,8 @@
         }
         window.App.posts.unshift(newPost);
         window.App.savePosts();
+        // 找回/恢复属于用户主动操作：强制上传，避免再次被时间戳比对跳过而同步不上去
+        if (window.App.uploadToCloud) window.App.uploadToCloud(true);
         var $timeline = document.getElementById('timeline');
         if ($timeline) {
             var emptyEl = $timeline.querySelector('.timeline-empty');
@@ -639,9 +676,70 @@
             window.App.bindCardEvents();
             window.App.renderedCount = (window.App.renderedCount || 0) + 1;
         }
-        removeKeySafe(KEY_LAST_PUB);
-        window.App.showToast('✅ 已重新发布（若原帖稍后出现，可删掉其中一条）');
+        // 恢复出来的帖子同样纳入本地快照与备份，后续再出问题仍可找回
+        recordLastPublished(newPost);
+        window.App.showToast(toastMsg || '✅ 已重新发布');
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 最近一次发布的动态疑似未同步 → 按新动态重新发布（媒体ID若还在即可恢复图片/视频）
+    function restoreLostPublish(snap) {
+        removeRestoreBar();
+        republishSnapshot(snap, '✅ 已重新发布（若原帖稍后出现，可删掉其中一条）');
+    }
+
+    // 从发布备份里恢复任意一条
+    function restorePublishBackup(postId) {
+        var list = getPublishBackups();
+        var entry = null;
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] && list[i].postId === postId) { entry = list[i]; break; }
+        }
+        if (!entry) { window.App.showToast('⚠️ 备份不存在'); return; }
+        republishSnapshot(entry, '✅ 已从备份恢复发布（如原帖仍在，可删掉重复的一条）');
+    }
+
+    // 发布备份列表（侧边栏 / 设置菜单入口）
+    function showPublishBackups() {
+        var list = getPublishBackups();
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        var rows = '';
+        for (var i = 0; i < list.length; i++) {
+            var e = list[i];
+            var text = (e.text || '').replace(/\s+/g, ' ').trim();
+            var snippet = text ? (text.length > 34 ? text.slice(0, 34) + '…' : text) : '（图片/视频动态）';
+            var mediaCount = (e.images || []).length + (e.videos || []).length;
+            var when = new Date(e.ts || e.ptime || Date.now()).toLocaleString();
+            var stillThere = (window.App.posts || []).some(function (p) { return p && p.id === e.postId; });
+            rows += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
+                '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:11px;color:var(--text-light);">' + window.App.escapeHtml(when) +
+                (mediaCount ? ' · ' + mediaCount + ' 个媒体' : '') +
+                (stillThere ? ' · <span style="color:#27ae60;">仍在动态里</span>' : '') + '</div>' +
+                '<div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + window.App.escapeHtml(snippet) + '</div>' +
+                '</div>' +
+                '<button data-restore="' + window.App.escapeHtml(e.postId) + '" class="btn btn-save" style="flex-shrink:0;padding:5px 12px;font-size:12px;border-radius:8px;">恢复</button>' +
+                '</div>';
+        }
+        if (!rows) rows = '<p style="text-align:center;color:var(--text-light);font-size:13px;margin:18px 0;">暂无发布备份</p>';
+        overlay.innerHTML = '<div class="modal-dialog" style="max-width:460px;">' +
+            '<h3>🗂️ 发布备份</h3>' +
+            '<p style="font-size:12px;color:var(--text-light);margin:6px 0 10px;">每次发布/编辑都会在本机留档（最多 100 条），云端同步异常时可从这里恢复。</p>' +
+            '<div style="max-height:50vh;overflow-y:auto;">' + rows + '</div>' +
+            '<div class="btn-row" style="justify-content:center;margin-top:14px;">' +
+            '<button class="btn btn-cancel" id="closePublishBackups">关闭</button>' +
+            '</div></div>';
+        document.body.appendChild(overlay);
+        overlay.querySelector('#closePublishBackups').onclick = function () { overlay.remove(); };
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+        overlay.querySelectorAll('[data-restore]').forEach(function (btn) {
+            btn.onclick = function () {
+                var id = btn.getAttribute('data-restore');
+                overlay.remove();
+                restorePublishBackup(id);
+            };
+        });
     }
 
     // 重新评估是否显示恢复条（本地数据就绪 / 云端初载完成 / 用户操作后调用）
@@ -674,20 +772,33 @@
         // 2) 最近一次发布的动态在本地数据里找不到 → 疑似被同步问题冲掉
         if (!busy) {
             var snap = readJSONSafe(KEY_LAST_PUB);
-            if (snap && snap.postId && snap.text) {
+            var snapHasContent = snap && ((snap.text && snap.text.trim()) || (snap.images && snap.images.length) || (snap.videos && snap.videos.length));
+            if (snap && snap.postId && snapHasContent) {
                 var found = (window.App.posts || []).some(function (p) { return p.id === snap.postId; });
                 if (!found) {
                     if (Date.now() - (snap.ts || 0) > 30 * 60 * 1000) {
                         // 超过半小时的旧记录自动作废，避免隔天误恢复导致重复
                         removeKeySafe(KEY_LAST_PUB);
                     } else {
-                        showBar(baseBarHtml('上次发布的动态可能未保存成功（' + timeAgoText(snap.ts) + '）', draftSnippet(snap.text), '↻ 重新发布'),
+                        showBar(baseBarHtml('上次发布的动态可能未保存成功（' + timeAgoText(snap.ts) + '）', (snap.text && snap.text.trim()) ? draftSnippet(snap.text) : '（图片/视频动态）', '↻ 重新发布'),
                             function () { restoreLostPublish(snap); },
                             function () { removeKeySafe(KEY_LAST_PUB); });
                     }
                 }
             }
         }
+    }
+
+    // 防丢帖：最近一次发布的动态“本地有、云端快照没有”时返回 true。
+    // 同步监听收到云端快照时用它判断是否该拒绝整体覆盖，避免刚发的帖子被当场吞掉。
+    function shouldProtectLocalPosts(cloudPosts) {
+        var snap = readJSONSafe(KEY_LAST_PUB);
+        if (!snap || !snap.postId) return false;
+        if (Date.now() - (snap.ts || 0) > 30 * 60 * 1000) return false;
+        var localHas = (window.App.posts || []).some(function (p) { return p && p.id === snap.postId; });
+        if (!localHas) return false;
+        var cloudHas = (cloudPosts || []).some(function (p) { return p && p.id === snap.postId; });
+        return !cloudHas;
     }
 
     // 公开接口 & 生命周期钩子（由 event.js 在本地/云端数据就绪后调用）
@@ -698,6 +809,10 @@
     window.App.refreshRestoreBar = refreshRestoreBar;
     window.App.clearPublishedSnapshot = clearPublishedSnapshot;
     window.App.recordLastPublished = recordLastPublished;
+    window.App.shouldProtectLocalPosts = shouldProtectLocalPosts;
+    window.App.getPublishBackups = getPublishBackups;
+    window.App.showPublishBackups = showPublishBackups;
+    window.App.restorePublishBackup = restorePublishBackup;
     window.App.onLocalDataReady = refreshRestoreBar;
     window.App.onCloudInitDone = refreshRestoreBar;
     window.App.addPublishFile = addPublishFile;

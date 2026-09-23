@@ -162,6 +162,10 @@
                 console.warn('☁️ 补传异常:', id, e);
             }
         }
+        if (!getPendingMediaIds().length && window.App.clearSyncStatus) {
+            // 待补传清空：收起媒体同步提示（其它同步提示不受影响）
+            window.App.clearSyncStatus('⚠️ 有媒体未同步到云端');
+        }
         return okCount;
     }
     function retryPendingMedia(ids) {

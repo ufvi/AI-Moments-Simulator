@@ -3434,3 +3434,48 @@ blockquote,
     .cb-truncated, .cb-toggle { display: none; }
     .cb-full { display: contents; }
 }
+
+/* ══ 云端同步状态提示条（无法同步时的显著提示） ══ */
+.sync-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.4;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, .28);
+}
+
+.sync-banner.warn { background: linear-gradient(135deg, #f39c12, #e67e22); }
+.sync-banner.error { background: linear-gradient(135deg, #e74c3c, #c0392b); }
+
+.sync-banner-btn {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .24);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.sync-banner-btn:hover { background: rgba(255, 255, 255, .38); }
+
+.sync-banner-close {
+    background: transparent;
+    font-size: 14px;
+    padding: 4px 8px;
+}
+
+body.sync-banner-on .app-container { padding-top: var(--sync-banner-h, 42px); }
+body.sync-banner-on .header { top: var(--sync-banner-h, 42px); }

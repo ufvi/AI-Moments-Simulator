@@ -16,6 +16,78 @@
     window.App = window.App || {};
     window.App.markLocalDirty = markLocalDirty;
 
+    // ─────────────────────────────────────────────
+    // 云端同步状态提示条：连不上云端 / 同步失败时给出显著、持续的提示
+    // level: 'ok'（隐藏）| 'warn' | 'error'
+    // retryFn: 点「重试」执行；不传则不显示重试按钮
+    // ─────────────────────────────────────────────
+    var _syncBannerDismissed = false;
+    var _syncBannerText = '';
+    var _syncBannerRetry = null;
+
+    function ensureSyncBanner() {
+        var el = document.getElementById('syncBanner');
+        if (el) return el;
+        if (!document.body) return null;
+        el = document.createElement('div');
+        el.id = 'syncBanner';
+        el.className = 'sync-banner';
+        el.innerHTML =
+            '<span id="syncBannerText" style="flex:1;min-width:0;"></span>' +
+            '<button id="syncBannerRetry" class="sync-banner-btn">重试</button>' +
+            '<button id="syncBannerClose" class="sync-banner-btn sync-banner-close" title="关闭">✕</button>';
+        document.body.appendChild(el);
+        el.querySelector('#syncBannerRetry').onclick = function () {
+            if (typeof _syncBannerRetry === 'function') _syncBannerRetry();
+            else if (window.App.uploadToCloud) window.App.uploadToCloud(false);
+        };
+        el.querySelector('#syncBannerClose').onclick = function () {
+            _syncBannerDismissed = true;
+            hideSyncBanner();
+        };
+        return el;
+    }
+
+    function hideSyncBanner() {
+        var el = document.getElementById('syncBanner');
+        if (el) el.remove();
+        if (document.body) document.body.classList.remove('sync-banner-on');
+    }
+
+    function setSyncStatus(level, text, retryFn) {
+        if (!document.body) {
+            document.addEventListener('DOMContentLoaded', function () { setSyncStatus(level, text, retryFn); }, { once: true });
+            return;
+        }
+        if (level === 'ok') {
+            _syncBannerDismissed = false;
+            _syncBannerText = '';
+            _syncBannerRetry = null;
+            hideSyncBanner();
+            return;
+        }
+        // 同一条提示被用户关掉后不再重复弹；提示内容变化则重新弹出
+        if (text !== _syncBannerText) {
+            _syncBannerText = text;
+            _syncBannerDismissed = false;
+        }
+        _syncBannerRetry = (typeof retryFn === 'function') ? retryFn : null;
+        if (_syncBannerDismissed) return;
+
+        var el = ensureSyncBanner();
+        if (!el) return;
+        el.className = 'sync-banner ' + (level === 'error' ? 'error' : 'warn');
+        el.querySelector('#syncBannerText').textContent = text;
+        el.querySelector('#syncBannerRetry').style.display = _syncBannerRetry ? '' : 'none';
+        document.body.classList.add('sync-banner-on');
+        document.body.style.setProperty('--sync-banner-h', (el.offsetHeight || 42) + 'px');
+    }
+    window.App.setSyncStatus = setSyncStatus;
+    // 仅当当前提示以 textPrefix 开头时才收起（避免误关掉其它同步提示）
+    window.App.clearSyncStatus = function (textPrefix) {
+        if (!textPrefix || (_syncBannerText || '').indexOf(textPrefix) === 0) setSyncStatus('ok');
+    };
+
     // 普通账号排在 AI 账号前面
     function sortAccounts() {
         var accs = window.App.accounts;
@@ -59,6 +131,14 @@
         // 防止自己刚上传的实时回声晚于 2 秒保护窗到达时，把紧接着的本地新修改覆盖掉
         if (result && result.skipped === false && !result.error && window._onLocalSync) {
             window._onLocalSync();
+        }
+        // 同步状态提示：失败/被跳过 → 显著提示；成功 → 自动收起
+        if (result && result.error) {
+            setSyncStatus('error', '⚠️ 同步到云端失败：内容已保存在本机，稍后会自动重试', function () { window.App.uploadToCloud(false); });
+        } else if (result && result.skipped) {
+            setSyncStatus('warn', '⚠️ 云端数据较新，本地改动暂未上传', function () { window.App.uploadToCloud(false); });
+        } else if (result) {
+            setSyncStatus('ok');
         }
         // 数据上传失败：30 秒后自动重试一次（本地数据已落盘，不会丢）
         if (result && result.error && !window._cloudRetryPending) {
@@ -880,6 +960,9 @@
                     case 'saved-quotes':
                         window.App.showSavedQuotesModal();
                         break;
+                    case 'publish-backups':
+                        window.App.showPublishBackups();
+                        break;
                 }
             });
         }
@@ -958,6 +1041,9 @@
                         break;
                     case 'saved-quotes':
                         window.App.showSavedQuotesModal();
+                        break;
+                    case 'publish-backups':
+                        window.App.showPublishBackups();
                         break;
                 }
             };
@@ -1500,16 +1586,28 @@
         var cloudStale = false;
         setTimeout(function () { initDone = true; }, 4000);
 
-        try {
-            if (window.App._fbReadyPromise) {
-                await Promise.race([
-                    window.App._fbReadyPromise,
-                    new Promise(function (_, reject) { setTimeout(function () { reject(new Error('timeout')); }, 3000); })
-                ]);
+        var cloudInitStarted = false;
 
+        // ── 云端初始化：拉取云端数据 → 解锁上传 → 注册实时监听 ──
+        // 幂等：SDK 晚到时由 _fbReadyPromise 回调补触发，保证实时监听不会漏注册
+        async function startCloudInit() {
+            if (cloudInitStarted) return;
+            cloudInitStarted = true;
+
+            // SDK 已就绪：解锁后续写操作的上传权限（与旧行为一致）
+            _cloudLoadDone = true;
+            console.log('✅ 云端加载阶段开始，上传保护已解除');
+
+            try {
                 // ── 云端优先：直接拉取云端数据覆盖本地 ──
                 if (window._fbLoadData) {
                     var cloudData = await window._fbLoadData();
+                    if (!cloudData && window._fbLoadError) {
+                        // 连接失败：显著提示（内容都在本机，联网后会自动补同步）
+                        setSyncStatus('error', '⚠️ 无法连接云端：内容已保存在本机，恢复后会自动同步', function () { location.reload(); });
+                    } else {
+                        setSyncStatus('ok');
+                    }
                     if (cloudData && cloudData.accounts) {
                         cloudData.accounts = toArray(cloudData.accounts);
                         cloudData.posts = toArray(cloudData.posts || []).map(fixPost);
@@ -1575,24 +1673,19 @@
                         }
                     }
                 }
+            } catch (e) { console.warn('Cloudflare加载失败，使用本地数据'); }
+
+            // 云端初载快照比本地旧（例如加载期间用户已抢先发布/编辑）
+            // → 此时把本地最新数据补传到云端，修复两边的分歧，避免内容留在本地却不再同步
+            if (cloudStale && window.App.accounts && window.App.accounts.length) {
+                try { await window.App.uploadToCloud(false); } catch (e) { }
             }
-        } catch (e) { console.warn('Cloudflare加载跳过，使用本地数据'); }
 
-        // ── 无论云端有没有数据，初始化阶段结束，解锁后续写操作的上传权限 ──
-        _cloudLoadDone = true;
-        console.log('✅ 云端加载阶段结束，上传保护已解除');
+            // 云端数据最终状态已确定：刷新草稿/发布丢失恢复条（此时判断“帖子是否存在”最准确）
+            try { if (window.App.onCloudInitDone) window.App.onCloudInitDone(); } catch (e) { }
 
-        // 云端初载快照比本地旧（例如加载期间用户已抢先发布/编辑，上传被锁没有执行）
-        // → 此时把本地最新数据补传到云端，修复两边的分歧，避免内容留在本地却不再同步
-        if (cloudStale && window.App.accounts && window.App.accounts.length) {
-            try { await window.App.uploadToCloud(false); } catch (e) { }
-        }
-
-        // 云端数据最终状态已确定：刷新草稿/发布丢失恢复条（此时判断“帖子是否存在”最准确）
-        try { if (window.App.onCloudInitDone) window.App.onCloudInitDone(); } catch (e) { }
-
-        // ── 实时监听：仅拉取，不回推 ──
-        if (window._fbListenChanges) {
+            // ── 实时监听：仅拉取，不回推 ──
+            if (window._fbListenChanges) {
             window._fbListenChanges(
                 function (cloudAccounts) {
                     // 忽略自己刚上传触发的回调（防循环）
@@ -1611,6 +1704,14 @@
                     // 发布处理中不整体替换 posts，避免云端旧快照冲掉刚发布的内容
                     if (window.App._publishing) return;
                     var rawPosts = Array.isArray(cloudPosts) ? cloudPosts : Object.values(cloudPosts);
+                    // 防丢帖：刚发布的动态还没同步到云端（上传未落地/被时间戳跳过）时，
+                    // 不能被云端旧快照整体覆盖，否则帖子会被当场吞掉
+                    if (window.App.shouldProtectLocalPosts && window.App.shouldProtectLocalPosts(rawPosts)) {
+                        console.log('🛡️ 刚发布的动态不在云端快照中，跳过本次覆盖并补传');
+                        if (window.App.uploadToCloud) window.App.uploadToCloud(false);
+                        if (window.App.refreshRestoreBar) window.App.refreshRestoreBar();
+                        return;
+                    }
                     window.App.posts = rawPosts.map(function (p) {
                         if (!p) return p;
                         p.likes = Array.isArray(p.likes) ? p.likes : (p.likes ? Object.values(p.likes) : []);
@@ -1623,9 +1724,62 @@
                     markLocalDirty();
                     window.App.renderTimeline(true);
                     window.App.showToast('☁️ 动态已同步');
+                    // 覆盖可能吞掉本地刚发的帖子：重新评估防丢恢复条，保证提示能出现
+                    if (window.App.refreshRestoreBar) window.App.refreshRestoreBar();
                 }
             );
+
+            }
+            // ── 连接状态监听：断线时显著提示，恢复后自动收起 ──
+            if (window._fbOnConnection) {
+                var _connTimer = null;
+                window._fbOnConnection(function (connected) {
+                    if (connected) {
+                        clearTimeout(_connTimer);
+                        _connTimer = null;
+                        setSyncStatus('ok');
+                    } else if (!_connTimer) {
+                        _connTimer = setTimeout(function () {
+                            _connTimer = null;
+                            setSyncStatus('warn', '📴 云端连接已断开：内容已保存在本机，恢复后会自动同步', function () { location.reload(); });
+                        }, 4000);
+                    }
+                });
+            }
         }
+
+        // SDK 就绪后（含晚到）自动启动云端初始化
+        if (window.App._fbReadyPromise) {
+            window.App._fbReadyPromise.then(function () {
+                if (!cloudInitStarted) startCloudInit();
+            });
+        }
+
+        try {
+            await Promise.race([
+                window.App._fbReadyPromise || Promise.resolve(),
+                new Promise(function (_, reject) { setTimeout(function () { reject(new Error('timeout')); }, 15000); })
+            ]);
+        } catch (e) {
+            console.warn('Firebase SDK 加载较慢，先用本地数据，SDK 就绪后自动同步');
+            // 先解除上传保护并放行恢复条；_fbReadyPromise 兑现后会补上拉取与实时监听
+            _cloudLoadDone = true;
+            try { if (window.App.onCloudInitDone) window.App.onCloudInitDone(); } catch (e2) { }
+            setSyncStatus('warn', '⏳ 云端连接较慢：内容已保存在本机，联网后会自动同步', function () { location.reload(); });
+        }
+
+        // SDK 已就绪（正常情况）：直接启动；已启动过则跳过
+        if (window._fbLoadData || window._fbListenChanges) {
+            await startCloudInit();
+        }
+
+        // ── 连接状态监听在 startCloudInit 内注册（SDK 晚到也能补上）──
+        window.addEventListener('offline', function () {
+            setSyncStatus('warn', '📴 网络已断开：内容已保存在本机，联网后会自动同步', null);
+        });
+        window.addEventListener('online', function () {
+            try { if (window.App.uploadToCloud) window.App.uploadToCloud(false); } catch (e) { }
+        });
 
     }
 
